@@ -27,7 +27,7 @@ interface ActionResult {
   message: string;
 }
 
-const CURRENT_VERSION = "1.0.0";
+const CURRENT_VERSION = "1.0.1";
 const GITHUB_REPO_URL = "https://github.com/amarshafan-m/FML-Buddy";
 const GITHUB_FONTS_BASE_URL = "https://raw.githubusercontent.com/amarshafan-m/FML-Buddy/main/Assets/FML_Fonts";
 
@@ -1855,7 +1855,7 @@ export const App: React.FC = () => {
           </div>
           <div className="brand-text">
             <h1>FML Buddy</h1>
-            <p>Malayalam Unicode ↔ FML / ML-TT Converter · v1.0.0 by Amarshafan M</p>
+            <p>Malayalam Unicode ↔ FML / ML-TT Converter · v{CURRENT_VERSION} by Amarshafan M</p>
           </div>
         </div>
 
@@ -2823,7 +2823,7 @@ export const App: React.FC = () => {
           onClick={(e) => e.stopPropagation()}
         >
           <div className="context-menu-info" style={{ padding: "4px 8px 6px", display: "flex", flexDirection: "column", gap: "2px" }}>
-            <span style={{ fontSize: "11px", fontWeight: "600", color: "#ffffff" }}>FML Buddy v1.0.0</span>
+            <span style={{ fontSize: "11px", fontWeight: "600", color: "#ffffff" }}>FML Buddy v{CURRENT_VERSION}</span>
             <span style={{ fontSize: "10px", color: "var(--text-muted)" }}>by Amarshafan M</span>
           </div>
           <div className="context-sep"></div>

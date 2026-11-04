@@ -39,7 +39,7 @@ export const handleForceRefresh = () => {
 const buildFlyoutMenu = () => {
   if (typeof window === "undefined" || !window.__adobe_cep__) return;
   const menu = `<Menu>
-  <MenuItem Id="info" Label="FML Buddy v1.0.0" Enabled="false" Checked="false"/>
+  <MenuItem Id="info" Label="FML Buddy v${version}" Enabled="false" Checked="false"/>
   <MenuItem Id="website" Label="by Amarshafan M" Enabled="false" Checked="false"/>
   <MenuItem Label="---" />
   <MenuItem Id="refresh" Label="Refresh" Enabled="true" Checked="false"/>
