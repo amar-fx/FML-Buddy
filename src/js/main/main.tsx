@@ -27,7 +27,7 @@ interface ActionResult {
   message: string;
 }
 
-const CURRENT_VERSION = "1.0.6";
+const CURRENT_VERSION = "1.0.7";
 const GITHUB_REPO_URL = "https://github.com/amarshafan-m/FML-Buddy";
 const GITHUB_FONTS_BASE_URL = "https://raw.githubusercontent.com/amarshafan-m/FML-Buddy/main/Assets/FML_Fonts";
 
@@ -1512,52 +1512,103 @@ export const App: React.FC = () => {
         const tmpDir = os.tmpdir ? os.tmpdir() : "/tmp";
         tempZxpPath = path.join(tmpDir, `fml_buddy_ota_${Date.now()}.zxp`);
 
-        const https = window.cep_node?.require?.("https") || (window as any).require?.("https");
-        const http = window.cep_node?.require?.("http") || (window as any).require?.("http");
+        // 1. Resilient Multi-Engine Downloader (Chromium Fetch -> System Curl -> PowerShell)
+        let downloadedSuccessfully = false;
+        let lastDownloadError: Error | null = null;
 
-        // 1. Download the update package with real-time percentage progress
-        if (https) {
-          await new Promise<void>((resolve, reject) => {
-            const fetchStream = (targetUrl: string, redirects = 0) => {
-              if (redirects > 6) return reject(new Error("Too many redirects"));
-              const mod = targetUrl.startsWith("http:") ? http : https;
-              const req = mod.get(targetUrl, { headers: { "User-Agent": "FML-Buddy-Client" } }, (res: any) => {
-                if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
-                  return fetchStream(res.headers.location, redirects + 1);
-                }
-                if (res.statusCode !== 200) {
-                  return reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage || "Download failed"}`));
-                }
-                const total = parseInt(res.headers["content-length"] || "0", 10);
-                let received = 0;
-                const stream = fs.createWriteStream(tempZxpPath);
-                res.on("data", (chunk: any) => {
-                  received += chunk.length;
+        // Engine 1: Native Chromium Fetch (uses OS network stack, bypasses Windows Node raw socket timeouts)
+        try {
+          const response = await fetch(updateDownloadUrl);
+          if (response.ok) {
+            const contentLength = response.headers.get("content-length");
+            const total = contentLength ? parseInt(contentLength, 10) : 0;
+            const stream = fs.createWriteStream(tempZxpPath);
+
+            if (response.body && typeof response.body.getReader === "function") {
+              const reader = response.body.getReader();
+              let received = 0;
+              while (true) {
+                const { done, value } = await reader.read();
+                if (done) break;
+                if (value) {
+                  received += value.length;
+                  stream.write(NodeBuffer.from(value));
                   if (total > 0) {
                     const pct = Math.min(100, Math.round((received / total) * 100));
                     setDownloadProgress(pct);
                     setOtaMessage(`Downloading update... ${pct}%`);
                   }
-                });
-                res.pipe(stream);
-                stream.on("finish", () => {
-                  stream.close();
-                  resolve();
-                });
-                stream.on("error", (err: any) => {
-                  try { fs.unlinkSync(tempZxpPath); } catch {}
-                  reject(err);
-                });
+                }
+              }
+              await new Promise<void>((resolve, reject) => {
+                stream.end(() => resolve());
+                stream.on("error", reject);
               });
-              req.on("error", reject);
-            };
-            fetchStream(updateDownloadUrl);
-          });
-        } else {
-          const response = await fetch(updateDownloadUrl);
-          if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText || ""}`.trim());
-          const arrayBuffer = await response.arrayBuffer();
-          fs.writeFileSync(tempZxpPath, NodeBuffer.from(arrayBuffer));
+            } else {
+              const arrayBuffer = await response.arrayBuffer();
+              fs.writeFileSync(tempZxpPath, NodeBuffer.from(arrayBuffer));
+            }
+
+            if (fs.existsSync(tempZxpPath) && fs.statSync(tempZxpPath).size > 1000000) {
+              downloadedSuccessfully = true;
+            }
+          } else {
+            lastDownloadError = new Error(`HTTP ${response.status}: ${response.statusText || "Download failed"}`);
+          }
+        } catch (fetchErr: any) {
+          console.warn("[FML Buddy] Fetch download failed, trying native curl engine:", fetchErr);
+          lastDownloadError = fetchErr;
+        }
+
+        // Engine 2: System curl (curl.exe on Windows 10/11, curl on macOS)
+        if (!downloadedSuccessfully && cp && cp.execFile) {
+          try {
+            setOtaMessage("Downloading update via system engine...");
+            const curlBin = platform === "win32"
+              ? (fs.existsSync(path.join(nodeProcess?.env?.WINDIR || "C:\\Windows", "System32", "curl.exe"))
+                  ? path.join(nodeProcess?.env?.WINDIR || "C:\\Windows", "System32", "curl.exe")
+                  : "curl.exe")
+              : "curl";
+
+            await new Promise<void>((resolve, reject) => {
+              cp.execFile(curlBin, ["-L", "--fail", "--retry", "2", "-o", tempZxpPath, updateDownloadUrl], (curlErr: any) => {
+                if (curlErr) return reject(curlErr);
+                resolve();
+              });
+            });
+
+            if (fs.existsSync(tempZxpPath) && fs.statSync(tempZxpPath).size > 1000000) {
+              downloadedSuccessfully = true;
+            }
+          } catch (curlErr: any) {
+            console.warn("[FML Buddy] Curl download failed, trying PowerShell engine:", curlErr);
+            lastDownloadError = curlErr;
+          }
+        }
+
+        // Engine 3: Windows PowerShell Net.WebClient (Windows only fallback)
+        if (!downloadedSuccessfully && platform === "win32" && cp && cp.execFile) {
+          try {
+            setOtaMessage("Downloading update via PowerShell...");
+            const psScript = `[Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; $wc = New-Object Net.WebClient; $wc.Headers.Add('User-Agent','FML-Buddy-Client'); $wc.DownloadFile('${updateDownloadUrl}', '${tempZxpPath.replace(/'/g, "''")}')`;
+            await new Promise<void>((resolve, reject) => {
+              cp.execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psScript], (psErr: any) => {
+                if (psErr) return reject(psErr);
+                resolve();
+              });
+            });
+
+            if (fs.existsSync(tempZxpPath) && fs.statSync(tempZxpPath).size > 1000000) {
+              downloadedSuccessfully = true;
+            }
+          } catch (psErr: any) {
+            console.warn("[FML Buddy] PowerShell download failed:", psErr);
+            lastDownloadError = psErr;
+          }
+        }
+
+        if (!downloadedSuccessfully) {
+          throw new Error(lastDownloadError?.message || "Failed to download update package");
         }
 
         setDownloadProgress(100);
