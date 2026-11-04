@@ -1497,45 +1497,56 @@ export const App: React.FC = () => {
         const downloadsDir = homeDir ? path.join(homeDir, "Downloads") : "";
         const targetDir = (downloadsDir && fs.existsSync(downloadsDir)) ? downloadsDir : (os.tmpdir ? os.tmpdir() : "");
 
-        const fileName = `FML-Buddy-v${latestVersion || "update"}.zxp`;
+        const fileName = "FML Buddy.zxp";
         const destPath = path.join(targetDir, fileName);
 
-        const response = await fetch(updateDownloadUrl);
-        if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText || ""}`.trim());
+        const https = window.cep_node?.require?.("https") || (window as any).require?.("https");
+        const http = window.cep_node?.require?.("http") || (window as any).require?.("http");
 
-        const contentLength = response.headers.get("content-length");
-        const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
-
-        let arrayBuffer: ArrayBuffer;
-        if (response.body && totalBytes > 0) {
-          const reader = response.body.getReader();
-          const chunks: Uint8Array[] = [];
-          let receivedBytes = 0;
-
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            if (value) {
-              chunks.push(value);
-              receivedBytes += value.length;
-              const percent = Math.min(100, Math.round((receivedBytes / totalBytes) * 100));
-              setDownloadProgress(percent);
-            }
-          }
-
-          const combined = new Uint8Array(receivedBytes);
-          let offset = 0;
-          for (const chunk of chunks) {
-            combined.set(chunk, offset);
-            offset += chunk.length;
-          }
-          arrayBuffer = combined.buffer;
+        if (https && fs) {
+          // Node.js HTTPS stream download: follows 302 redirects without CORS restrictions
+          await new Promise<void>((resolve, reject) => {
+            const fetchStream = (targetUrl: string, redirects = 0) => {
+              if (redirects > 6) return reject(new Error("Too many redirects"));
+              const mod = targetUrl.startsWith("http:") ? http : https;
+              const req = mod.get(targetUrl, { headers: { "User-Agent": "FML-Buddy-Client" } }, (res: any) => {
+                if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+                  return fetchStream(res.headers.location, redirects + 1);
+                }
+                if (res.statusCode !== 200) {
+                  return reject(new Error(`HTTP ${res.statusCode}: ${res.statusMessage || "Download failed"}`));
+                }
+                const total = parseInt(res.headers["content-length"] || "0", 10);
+                let received = 0;
+                const stream = fs.createWriteStream(destPath);
+                res.on("data", (chunk: any) => {
+                  received += chunk.length;
+                  if (total > 0) {
+                    setDownloadProgress(Math.min(100, Math.round((received / total) * 100)));
+                  }
+                });
+                res.pipe(stream);
+                stream.on("finish", () => {
+                  stream.close();
+                  resolve();
+                });
+                stream.on("error", (err: any) => {
+                  try { fs.unlinkSync(destPath); } catch {}
+                  reject(err);
+                });
+              });
+              req.on("error", reject);
+            };
+            fetchStream(updateDownloadUrl);
+          });
         } else {
-          arrayBuffer = await response.arrayBuffer();
+          // Browser fetch fallback
+          const response = await fetch(updateDownloadUrl);
+          if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText || ""}`.trim());
+          const arrayBuffer = await response.arrayBuffer();
+          fs.writeFileSync(destPath, NodeBuffer.from(arrayBuffer));
         }
 
-        // Save binary file into user's Downloads directory
-        fs.writeFileSync(destPath, NodeBuffer.from(arrayBuffer));
         setDownloadProgress(100);
         showToast(`✓ Downloaded ${fileName} to Downloads folder!`, "success");
 
