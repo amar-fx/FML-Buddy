@@ -417,6 +417,7 @@ export const App: React.FC = () => {
 
   // GitHub Version Control & Update state
   const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "latest" | "available" | "error">("idle");
+  const [updateError, setUpdateError] = useState<string | null>(null);
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [updateDownloadUrl, setUpdateDownloadUrl] = useState<string | null>(null);
   const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
@@ -517,7 +518,7 @@ export const App: React.FC = () => {
     setToastType(type);
     toastTimeoutRef.current = setTimeout(() => {
       setToastMessage(null);
-    }, 2400);
+    }, type === "error" ? 3800 : 2400);
   }, []);
 
   // Clipboard copy (Supports macOS pbcopy, Windows PowerShell/clip, and navigator.clipboard)
@@ -1387,6 +1388,7 @@ export const App: React.FC = () => {
   // =========================================================================
   const checkForUpdates = async (isManual = false) => {
     setUpdateStatus("checking");
+    setUpdateError(null);
     if (isManual) showToast("Checking GitHub for updates...", "info");
 
     try {
@@ -1405,6 +1407,7 @@ export const App: React.FC = () => {
 
         setLatestVersion(latestTag);
         setUpdateDownloadUrl(downloadUrl);
+        setUpdateError(null);
 
         if (latestTag && isNewerVersion(CURRENT_VERSION, latestTag)) {
           setUpdateStatus("available");
@@ -1414,32 +1417,61 @@ export const App: React.FC = () => {
           if (isManual) showToast(`FML Buddy is up to date (v${CURRENT_VERSION})`, "success");
         }
       } else {
-        const rawPkg = await fetch("https://raw.githubusercontent.com/amarshafan-m/FML-Buddy/main/package.json");
-        if (rawPkg.ok) {
-          const pkg = await rawPkg.json();
-          const ver = pkg.version;
-          setLatestVersion(ver);
-          setUpdateDownloadUrl("https://github.com/amarshafan-m/FML-Buddy/releases");
-          if (ver && isNewerVersion(CURRENT_VERSION, ver)) {
-            setUpdateStatus("available");
-            showToast(`Update available: v${ver}!`, "info");
-          } else {
-            setUpdateStatus("latest");
-            if (isManual) showToast(`FML Buddy is up to date (v${CURRENT_VERSION})`, "success");
+        // Detailed HTTP error status
+        let httpErrorMsg = `GitHub API HTTP ${res.status}`;
+        if (res.status === 403) {
+          httpErrorMsg = "GitHub API rate limit exceeded. Please try again shortly.";
+        } else if (res.status === 404) {
+          httpErrorMsg = "No GitHub releases found for FML-Buddy.";
+        } else if (res.status >= 500) {
+          httpErrorMsg = `GitHub server error (${res.status}).`;
+        }
+
+        // Try raw package.json as fallback
+        let fallbackSucceeded = false;
+        try {
+          const rawPkg = await fetch("https://raw.githubusercontent.com/amarshafan-m/FML-Buddy/main/package.json");
+          if (rawPkg.ok) {
+            const pkg = await rawPkg.json();
+            const ver = pkg.version;
+            setLatestVersion(ver);
+            setUpdateDownloadUrl("https://github.com/amarshafan-m/FML-Buddy/releases");
+            setUpdateError(null);
+            fallbackSucceeded = true;
+            if (ver && isNewerVersion(CURRENT_VERSION, ver)) {
+              setUpdateStatus("available");
+              showToast(`Update available: v${ver}!`, "info");
+            } else {
+              setUpdateStatus("latest");
+              if (isManual) showToast(`FML Buddy is up to date (v${CURRENT_VERSION})`, "success");
+            }
           }
-        } else {
-          setUpdateStatus("latest");
-          if (isManual) showToast(`You're running the latest version (v${CURRENT_VERSION})`, "info");
+        } catch {
+          // Fallback also failed
+        }
+
+        if (!fallbackSucceeded) {
+          setUpdateStatus("error");
+          setUpdateError(httpErrorMsg);
+          if (isManual) showToast(`Update check error: ${httpErrorMsg}`, "error");
         }
       }
-    } catch (err) {
-      setUpdateStatus("latest");
-      if (isManual) showToast(`Connected to GitHub. You're on v${CURRENT_VERSION}.`, "info");
+    } catch (err: any) {
+      const errMsg = (typeof navigator !== "undefined" && !navigator.onLine)
+        ? "Network offline: No internet connection detected"
+        : (err?.message || "Failed to connect to GitHub");
+      setUpdateStatus("error");
+      setUpdateError(errMsg);
+      if (isManual) showToast(`Update check error: ${errMsg}`, "error");
     }
   };
 
   const downloadUpdate = async () => {
     if (!updateDownloadUrl) {
+      const err = "No download URL available";
+      setUpdateStatus("error");
+      setUpdateError(err);
+      showToast(`Update failed: ${err}`, "error");
       openExternalUrl("https://github.com/amarshafan-m/FML-Buddy/releases");
       return;
     }
@@ -1469,7 +1501,7 @@ export const App: React.FC = () => {
         const destPath = path.join(targetDir, fileName);
 
         const response = await fetch(updateDownloadUrl);
-        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+        if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText || ""}`.trim());
 
         const contentLength = response.headers.get("content-length");
         const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
@@ -1525,7 +1557,10 @@ export const App: React.FC = () => {
         setIsDownloadingUpdate(false);
         return;
       } catch (err: any) {
-        console.warn("[FML Buddy] Direct download failed, opening browser:", err);
+        console.warn("[FML Buddy] Direct download failed, opening browser fallback:", err);
+        const errMsg = err?.message || "Direct download failed";
+        setUpdateError(errMsg);
+        showToast(`Download issue (${errMsg}). Opening browser fallback...`, "error");
       } finally {
         setIsDownloadingUpdate(false);
         setDownloadProgress(null);
@@ -1533,8 +1568,15 @@ export const App: React.FC = () => {
     }
 
     // Universal browser fallback (works across macOS, Windows, web)
-    showToast("Opening GitHub release download in browser...", "info");
-    openExternalUrl(updateDownloadUrl);
+    try {
+      showToast("Opening GitHub release download in browser...", "info");
+      openExternalUrl(updateDownloadUrl);
+    } catch (err: any) {
+      const errMsg = err?.message || "Failed to open release URL";
+      setUpdateStatus("error");
+      setUpdateError(errMsg);
+      showToast(`Update error: ${errMsg}`, "error");
+    }
   };
 
   /**
@@ -2699,13 +2741,14 @@ export const App: React.FC = () => {
                 </div>
 
                 <div className="github-update-status">
-                  <div className={`status-left ${updateStatus === "available" ? "has-update" : ""}`}>
+                  <div className={`status-left ${updateStatus === "available" ? "has-update" : ""} ${updateStatus === "error" ? "has-error" : ""}`}>
                     <span className="status-dot-mini"></span>
-                    <span>
+                    <span className="status-text" title={updateError || undefined}>
                       {updateStatus === "checking" && "Querying GitHub API..."}
                       {updateStatus === "available" && `New version available: v${latestVersion}!`}
                       {updateStatus === "latest" && `FML Buddy is up to date (v${CURRENT_VERSION}).`}
                       {updateStatus === "idle" && "Latest release tracked via GitHub repository."}
+                      {updateStatus === "error" && (updateError ? `Error: ${updateError}` : "Update check failed")}
                     </span>
                   </div>
 
@@ -2727,6 +2770,21 @@ export const App: React.FC = () => {
                           ? (downloadProgress !== null ? `Downloading ${downloadProgress}%...` : "Downloading...")
                           : "Download Update"}
                       </span>
+                    </button>
+                  )}
+
+                  {updateStatus === "error" && (
+                    <button
+                      type="button"
+                      className="btn-retry-update"
+                      onClick={() => checkForUpdates(true)}
+                      title="Retry checking for updates"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="23 4 23 10 17 10"></polyline>
+                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
+                      </svg>
+                      <span>Retry</span>
                     </button>
                   )}
                 </div>
