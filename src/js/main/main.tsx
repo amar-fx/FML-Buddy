@@ -27,7 +27,7 @@ interface ActionResult {
   message: string;
 }
 
-const CURRENT_VERSION = "1.0.2";
+const CURRENT_VERSION = "1.0.3";
 const GITHUB_REPO_URL = "https://github.com/amarshafan-m/FML-Buddy";
 const GITHUB_FONTS_BASE_URL = "https://raw.githubusercontent.com/amarshafan-m/FML-Buddy/main/Assets/FML_Fonts";
 
@@ -424,6 +424,7 @@ export const App: React.FC = () => {
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [showUpdateCard, setShowUpdateCard] = useState(false);
   const [downloadComplete, setDownloadComplete] = useState(false);
+  const [showUpdatedTestBanner, setShowUpdatedTestBanner] = useState(true);
 
   // Manglish IME State
   const [imeWordToken, setImeWordToken] = useState<ActiveWordToken | null>(null);
@@ -2046,6 +2047,42 @@ export const App: React.FC = () => {
           </button>
         </div>
       </header>
+
+      {/* ================= TEST VERIFICATION CARD: "UPDATED" BANNER ================= */}
+      {showUpdatedTestBanner && (
+        <div className="fml-updated-test-banner">
+          <div className="banner-left">
+            <div className="banner-badge-icon">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
+                <polyline points="20 6 9 17 4 12"></polyline>
+              </svg>
+            </div>
+            <div className="banner-text">
+              <div className="banner-title-row">
+                <span className="banner-pill">UPDATED</span>
+                <span className="banner-version">FML Buddy v{CURRENT_VERSION}</span>
+                <span className="banner-status-tag">Test Verified ✓</span>
+              </div>
+              <p className="banner-desc">
+                OTA Auto-Update successfully installed! This card confirms you are running the updated build.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            className="btn-dismiss-test-banner"
+            onClick={() => setShowUpdatedTestBanner(false)}
+            title="Dismiss test banner"
+            aria-label="Dismiss updated test banner"
+          >
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="18" y1="6" x2="6" y2="18"></line>
+              <line x1="6" y1="6" x2="18" y2="18"></line>
+            </svg>
+          </button>
+        </div>
+      )}
 
       {/* ================= 2. TWO-COLUMN WORKSPACE ================= */}
       <main className="fml-workspace-grid">
