@@ -31,9 +31,33 @@ const CURRENT_VERSION = "1.0.7";
 const GITHUB_REPO_URL = "https://github.com/amarshafan-m/FML-Buddy";
 const GITHUB_FONTS_BASE_URL = "https://raw.githubusercontent.com/amarshafan-m/FML-Buddy/main/Assets/FML_Fonts";
 
+function getNodeBuffer(): any {
+  if (typeof Buffer !== "undefined") return Buffer;
+  if (typeof window !== "undefined") {
+    if ((window as any).Buffer) return (window as any).Buffer;
+    if ((window as any).cep_node?.Buffer) return (window as any).cep_node.Buffer;
+    if ((window as any).cep_node?.require) {
+      try { return (window as any).cep_node.require("buffer").Buffer; } catch (e) {}
+    }
+  }
+  if (typeof require !== "undefined") {
+    try { return require("buffer").Buffer; } catch (e) {}
+  }
+  return null;
+}
+
 /** Build a PowerShell command that does not depend on shell quoting or stdin encoding. */
-function encodePowerShellCommand(command: string, NodeBuffer: any): string {
-  return NodeBuffer.from(command, "utf16le").toString("base64");
+function encodePowerShellCommand(command: string, customBuffer?: any): string {
+  const buf = customBuffer || getNodeBuffer();
+  if (buf) {
+    return buf.from(command, "utf16le").toString("base64");
+  }
+  let binary = "";
+  for (let i = 0; i < command.length; i++) {
+    const code = command.charCodeAt(i);
+    binary += String.fromCharCode(code & 0xff, (code >> 8) & 0xff);
+  }
+  return btoa(binary);
 }
 
 function refreshWindowsFontCache(execFileSync: any, NodeBuffer: any, fontPaths: string[] = []): void {
@@ -374,9 +398,20 @@ const FontCardItem: React.FC<FontCardItemProps> = ({
 const DEFAULT_SAMPLE_TEXT = "കേരളത്തിലെ ഗ്രാമ പഞ്ചായത്ത് ഭരണത്തിൽ ഡിജിറ്റൽ ഉപകരണങ്ങളുടെ പ്രാധാന്യം വർധിക്കുന്നു.";
 
 export const App: React.FC = () => {
-  // Main editor state
-  const [inputText, setInputText] = useState(DEFAULT_SAMPLE_TEXT);
-  const [inputMode, setInputMode] = useState<"unicode" | "manglish">("unicode");
+  const [inputMode, setInputMode] = useState<"unicode" | "manglish">(() => {
+    try {
+      const saved = localStorage.getItem("fml_buddy_mode");
+      if (saved === "unicode" || saved === "manglish") return saved;
+    } catch (e) {}
+    return "manglish";
+  });
+  const [inputText, setInputText] = useState<string>(() => {
+    try {
+      const savedMode = localStorage.getItem("fml_buddy_mode");
+      if (savedMode === "unicode") return DEFAULT_SAMPLE_TEXT;
+    } catch (e) {}
+    return "";
+  });
   const [targetEncoding, setTargetEncoding] = useState<TargetEncoding>("fml");
   const [isEncodingDropdownOpen, setIsEncodingDropdownOpen] = useState(false);
   const encodingDropdownRef = useRef<HTMLDivElement>(null);
@@ -472,7 +507,12 @@ export const App: React.FC = () => {
   useEffect(() => {
     try {
       const savedMode = localStorage.getItem("fml_buddy_mode");
-      if (savedMode === "unicode" || savedMode === "manglish") setInputMode(savedMode);
+      if (savedMode === "unicode" || savedMode === "manglish") {
+        setInputMode(savedMode);
+      } else {
+        setInputMode("manglish");
+        localStorage.setItem("fml_buddy_mode", "manglish");
+      }
 
       const savedEncoding = localStorage.getItem("fml_buddy_encoding");
       if (savedEncoding === "fml" || savedEncoding === "roman") {
@@ -526,56 +566,44 @@ export const App: React.FC = () => {
     }, type === "error" ? 3800 : 2400);
   }, []);
 
-  // Clipboard copy (Supports macOS pbcopy, Windows PowerShell/clip, and navigator.clipboard)
+  // Clipboard copy (100% Unicode-safe on Windows & Mac; prevents '?' question mark encoding bugs)
   const copyToClipboard = useCallback(
     async (text: string, isSilent: boolean = false) => {
       if (!text) return;
       let success = false;
 
-      // 1. Try Node child_process (synchronous & reliable in Adobe CEP)
-      const cp = getChildProcess();
-      const nodeProcess = getNodeProcess();
-      const platform = getPlatform();
-
-      if (cp && cp.execSync) {
-        if (platform === "darwin") {
-          try {
-            cp.execSync("pbcopy", {
-              input: text,
-              env: { ...(nodeProcess?.env || {}), LANG: "en_US.UTF-8", LC_CTYPE: "en_US.UTF-8" },
-            });
-            success = true;
-          } catch (e) {}
-        } else if (platform === "win32") {
-          try {
-            const NodeBuffer = window.cep_node.require("buffer").Buffer;
-            const encodedText = NodeBuffer.from(text, "utf8").toString("base64");
-            const command = `$value=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('${encodedText}')); Set-Clipboard -Value $value`;
-            const encodedCommand = encodePowerShellCommand(command, NodeBuffer);
-            cp.execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", encodedCommand], { stdio: "ignore", windowsHide: true });
-            success = true;
-          } catch (e) {
-            try {
-              cp.execFileSync("clip.exe", [], { input: text, windowsHide: true });
-              success = true;
-            } catch (e2) {}
+      // 1. Primary: Native DOM copy event listener (100% synchronous, sets CF_UNICODETEXT in Windows OS Clipboard)
+      try {
+        let copiedViaEvent = false;
+        const onCopy = (e: ClipboardEvent) => {
+          e.stopImmediatePropagation();
+          e.preventDefault();
+          if (e.clipboardData) {
+            e.clipboardData.clearData();
+            e.clipboardData.setData("text/plain", text);
+            copiedViaEvent = true;
           }
-        }
-      }
+        };
+        document.addEventListener("copy", onCopy, true);
+        document.execCommand("copy");
+        document.removeEventListener("copy", onCopy, true);
+        if (copiedViaEvent) success = true;
+      } catch (e) {}
 
-      // 2. Try navigator.clipboard.writeText fallback
-      if (!success && navigator.clipboard && navigator.clipboard.writeText) {
+      // 2. Secondary: navigator.clipboard.writeText (asynchronous Chromium native OS clipboard)
+      if (!success && typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.writeText) {
         try {
           await navigator.clipboard.writeText(text);
           success = true;
         } catch (e) {}
       }
 
-      // 3. Fallback to invisible textarea select + execCommand("copy")
-      if (!success) {
+      // 3. Tertiary: Hidden textarea select + execCommand("copy")
+      if (!success && typeof document !== "undefined") {
         try {
           const tempTextArea = document.createElement("textarea");
           tempTextArea.value = text;
+          tempTextArea.setAttribute("readonly", "");
           tempTextArea.style.position = "fixed";
           tempTextArea.style.left = "-9999px";
           tempTextArea.style.top = "-9999px";
@@ -585,6 +613,47 @@ export const App: React.FC = () => {
           success = document.execCommand("copy");
           document.body.removeChild(tempTextArea);
         } catch (e) {}
+      }
+
+      // 4. Quaternary: Node child_process (macOS pbcopy or Windows PowerShell base64)
+      if (!success) {
+        const cp = getChildProcess();
+        const nodeProcess = getNodeProcess();
+        const platform = getPlatform();
+
+        if (cp && cp.execSync) {
+          if (platform === "darwin") {
+            try {
+              cp.execSync("pbcopy", {
+                input: text,
+                env: { ...(nodeProcess?.env || {}), LANG: "en_US.UTF-8", LC_CTYPE: "en_US.UTF-8" },
+              });
+              success = true;
+            } catch (e) {}
+          } else if (platform === "win32") {
+            try {
+              const NodeBuffer = getNodeBuffer();
+              const base64Text = NodeBuffer
+                ? NodeBuffer.from(text, "utf8").toString("base64")
+                : btoa(unescape(encodeURIComponent(text)));
+              const psScript = `Add-Type -AssemblyName System.Windows.Forms; $val = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${base64Text}')); [System.Windows.Forms.Clipboard]::SetText($val);`;
+              const encodedCommand = encodePowerShellCommand(psScript, NodeBuffer);
+              cp.execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", encodedCommand], { stdio: "ignore", windowsHide: true });
+              success = true;
+            } catch (e) {
+              try {
+                const NodeBuffer = getNodeBuffer();
+                const base64Text = NodeBuffer
+                  ? NodeBuffer.from(text, "utf8").toString("base64")
+                  : btoa(unescape(encodeURIComponent(text)));
+                const psScript = `$val = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String('${base64Text}')); Set-Clipboard -Value $val;`;
+                const encodedCommand = encodePowerShellCommand(psScript, NodeBuffer);
+                cp.execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", encodedCommand], { stdio: "ignore", windowsHide: true });
+                success = true;
+              } catch (e2) {}
+            }
+          }
+        }
       }
 
       if (success) {
@@ -600,15 +669,23 @@ export const App: React.FC = () => {
     [showToast]
   );
 
-  // Clipboard paste (Supports Node child_process, macOS pbpaste, Windows PowerShell Get-Clipboard, and navigator.clipboard)
+  // Clipboard paste (100% Unicode-safe on Windows & Mac; prevents '?' question mark encoding bugs)
   const pasteFromClipboard = useCallback(async () => {
     let pastedText = "";
     const cp = getChildProcess();
     const nodeProcess = getNodeProcess();
     const platform = getPlatform();
 
-    // 1. Try Node child_process (100% reliable in CEP without browser permission dialogs)
-    if (cp && cp.execSync) {
+    // 1. Primary: navigator.clipboard.readText() (Directly reads CF_UNICODETEXT without codepage corruption)
+    if (typeof navigator !== "undefined" && navigator.clipboard && navigator.clipboard.readText) {
+      try {
+        const text = await navigator.clipboard.readText();
+        if (text) pastedText = text;
+      } catch (e) {}
+    }
+
+    // 2. Secondary: Node child_process (macOS pbpaste or Windows PowerShell base64 output)
+    if (!pastedText && cp && cp.execSync) {
       if (platform === "darwin") {
         try {
           pastedText = cp.execSync("pbpaste", {
@@ -618,25 +695,25 @@ export const App: React.FC = () => {
         } catch (e) {}
       } else if (platform === "win32") {
         try {
-          pastedText = cp.execSync(
-            'powershell -NoProfile -Command "[Console]::Out.Write((Get-Clipboard -Raw))"',
-            { encoding: "utf8" }
-          );
-        } catch (e) {
-          try {
-            pastedText = cp.execSync('powershell -NoProfile -Command "Get-Clipboard"', {
-              encoding: "utf8",
-            });
-          } catch (e2) {}
-        }
+          // Send clipboard content as base64 to prevent Windows console OEM codepage (?) replacement
+          const psScript = '$c = Get-Clipboard -Raw; if ($c) { [Console]::Out.Write([System.Convert]::ToBase64String([System.Text.Encoding]::UTF8.GetBytes($c))) }';
+          const NodeBuffer = getNodeBuffer();
+          let b64Out = "";
+          if (NodeBuffer) {
+            const encodedCmd = encodePowerShellCommand(psScript, NodeBuffer);
+            b64Out = cp.execFileSync("powershell.exe", ["-NoProfile", "-NonInteractive", "-STA", "-WindowStyle", "Hidden", "-EncodedCommand", encodedCmd], { encoding: "ascii", windowsHide: true });
+          } else {
+            b64Out = cp.execSync(`powershell.exe -NoProfile -NonInteractive -Command "${psScript}"`, { encoding: "ascii", windowsHide: true });
+          }
+          if (b64Out && b64Out.trim()) {
+            if (NodeBuffer) {
+              pastedText = NodeBuffer.from(b64Out.trim(), "base64").toString("utf8");
+            } else if (typeof atob !== "undefined") {
+              pastedText = decodeURIComponent(escape(atob(b64Out.trim())));
+            }
+          }
+        } catch (e) {}
       }
-    }
-
-    // 2. Try navigator.clipboard.readText() fallback
-    if (!pastedText && navigator.clipboard && navigator.clipboard.readText) {
-      try {
-        pastedText = await navigator.clipboard.readText();
-      } catch (e) {}
     }
 
     // 3. Document execCommand fallback if focused in textarea
@@ -844,39 +921,25 @@ export const App: React.FC = () => {
         (keyLower === "c" || e.code === "KeyC" || e.keyCode === 67)
       ) {
         const active = document.activeElement;
-        if (active === inputTextareaRef.current && inputTextareaRef.current) {
-          const s = inputTextareaRef.current.selectionStart;
-          const end = inputTextareaRef.current.selectionEnd;
-          if (s !== null && end !== null && s !== end) {
-            e.preventDefault();
-            const selected = inputTextareaRef.current.value.substring(s, end);
-            copyToClipboard(selected, false);
-          } else if (inputText) {
-            e.preventDefault();
-            copyToClipboard(inputText, false);
-          }
-        } else if (active === outputTextareaRef.current && outputTextareaRef.current) {
-          const s = outputTextareaRef.current.selectionStart;
-          const end = outputTextareaRef.current.selectionEnd;
-          if (s !== null && end !== null && s !== end) {
-            e.preventDefault();
-            const selected = outputTextareaRef.current.value.substring(s, end);
-            copyToClipboard(selected, false);
-          } else if (outputText) {
-            e.preventDefault();
-            copyToClipboard(outputText, false);
-          }
-        } else if (active instanceof HTMLInputElement) {
-          const s = active.selectionStart;
-          const end = active.selectionEnd;
-          if (s !== null && end !== null && s !== end) {
-            e.preventDefault();
-            const selected = active.value.substring(s, end);
-            copyToClipboard(selected, false);
-          } else if (active.value) {
-            e.preventDefault();
-            copyToClipboard(active.value, false);
-          }
+        // If text is selected in any editable field, allow native OS/browser copy without interception
+        if (
+          (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) &&
+          active.selectionStart !== null &&
+          active.selectionEnd !== null &&
+          active.selectionStart !== active.selectionEnd
+        ) {
+          return;
+        }
+
+        if (active === inputTextareaRef.current && inputText) {
+          e.preventDefault();
+          copyToClipboard(inputText, false);
+        } else if (active === outputTextareaRef.current && outputText) {
+          e.preventDefault();
+          copyToClipboard(outputText, false);
+        } else if (active instanceof HTMLInputElement && active.value) {
+          e.preventDefault();
+          copyToClipboard(active.value, false);
         } else {
           const sel = window.getSelection()?.toString();
           if (sel) {
@@ -898,6 +961,11 @@ export const App: React.FC = () => {
         !e.altKey &&
         (keyLower === "v" || e.code === "KeyV" || e.keyCode === 86)
       ) {
+        const active = document.activeElement;
+        // If focused in a text input or textarea, let the browser paste natively into the field
+        if (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) {
+          return;
+        }
         e.preventDefault();
         pasteFromClipboard();
       }
@@ -909,6 +977,15 @@ export const App: React.FC = () => {
         (keyLower === "x" || e.code === "KeyX" || e.keyCode === 88)
       ) {
         const active = document.activeElement;
+        // If user has selected text in an input/textarea, let the browser cut natively
+        if (
+          (active instanceof HTMLTextAreaElement || active instanceof HTMLInputElement) &&
+          active.selectionStart !== null &&
+          active.selectionEnd !== null &&
+          active.selectionStart !== active.selectionEnd
+        ) {
+          return;
+        }
         if (active === inputTextareaRef.current && inputTextareaRef.current) {
           const s = inputTextareaRef.current.selectionStart;
           const end = inputTextareaRef.current.selectionEnd;
