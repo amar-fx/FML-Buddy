@@ -27,7 +27,7 @@ interface ActionResult {
   message: string;
 }
 
-const CURRENT_VERSION = "1.0.1";
+const CURRENT_VERSION = "1.0.2";
 const GITHUB_REPO_URL = "https://github.com/amarshafan-m/FML-Buddy";
 const GITHUB_FONTS_BASE_URL = "https://raw.githubusercontent.com/amarshafan-m/FML-Buddy/main/Assets/FML_Fonts";
 
@@ -422,6 +422,8 @@ export const App: React.FC = () => {
   const [updateDownloadUrl, setUpdateDownloadUrl] = useState<string | null>(null);
   const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
+  const [showUpdateCard, setShowUpdateCard] = useState(false);
+  const [downloadComplete, setDownloadComplete] = useState(false);
 
   // Manglish IME State
   const [imeWordToken, setImeWordToken] = useState<ActiveWordToken | null>(null);
@@ -1411,6 +1413,7 @@ export const App: React.FC = () => {
 
         if (latestTag && isNewerVersion(CURRENT_VERSION, latestTag)) {
           setUpdateStatus("available");
+          setShowUpdateCard(true);
           showToast(`Update available: v${latestTag}!`, "info");
         } else {
           setUpdateStatus("latest");
@@ -1440,6 +1443,7 @@ export const App: React.FC = () => {
             fallbackSucceeded = true;
             if (ver && isNewerVersion(CURRENT_VERSION, ver)) {
               setUpdateStatus("available");
+              setShowUpdateCard(true);
               showToast(`Update available: v${ver}!`, "info");
             } else {
               setUpdateStatus("latest");
@@ -1548,6 +1552,7 @@ export const App: React.FC = () => {
         }
 
         setDownloadProgress(100);
+        setDownloadComplete(true);
         showToast(`✓ Downloaded ${fileName} to Downloads folder!`, "success");
 
         // Cross-platform open / reveal in Finder or Explorer
@@ -1582,11 +1587,45 @@ export const App: React.FC = () => {
     try {
       showToast("Opening GitHub release download in browser...", "info");
       openExternalUrl(updateDownloadUrl);
+      setDownloadComplete(true);
     } catch (err: any) {
       const errMsg = err?.message || "Failed to open release URL";
       setUpdateStatus("error");
       setUpdateError(errMsg);
       showToast(`Update error: ${errMsg}`, "error");
+    }
+  };
+
+  /** Reveal downloaded FML Buddy.zxp in Finder / Explorer and open installer */
+  const revealDownloadedFile = () => {
+    const isCep = Boolean(window.cep_node || (window as any).require);
+    if (!isCep) {
+      if (updateDownloadUrl) openExternalUrl(updateDownloadUrl);
+      return;
+    }
+    try {
+      const path = window.cep_node?.require?.("path") || (window as any).require?.("path");
+      const os = window.cep_node?.require?.("os") || (window as any).require?.("os");
+      const cp = window.cep_node?.require?.("child_process") || (window as any).require?.("child_process");
+      const fs = window.cep_node?.require?.("fs") || (window as any).require?.("fs");
+      const platform = getPlatform();
+      const homeDir = os.homedir ? os.homedir() : "";
+      const downloadsDir = homeDir ? path.join(homeDir, "Downloads") : "";
+      const targetDir = (downloadsDir && fs.existsSync(downloadsDir)) ? downloadsDir : (os.tmpdir ? os.tmpdir() : "");
+      const destPath = path.join(targetDir, "FML Buddy.zxp");
+
+      if (cp && cp.exec) {
+        if (platform === "darwin") {
+          cp.exec(`open -R "${destPath}"`);
+          cp.exec(`open "${destPath}"`);
+        } else if (platform === "win32") {
+          cp.exec(`explorer.exe /select,"${destPath}"`);
+          cp.exec(`cmd.exe /c start "" "${destPath}"`);
+        }
+        showToast("Opening installer & revealing file...", "info");
+      }
+    } catch (e) {
+      console.warn("Could not reveal file:", e);
     }
   };
 
@@ -1847,6 +1886,109 @@ export const App: React.FC = () => {
         </div>
       )}
 
+      {/* ================= FLOATING UPDATE NOTIFICATION CARD ================= */}
+      {showUpdateCard && updateStatus === "available" && (
+        <aside className="fml-update-card-banner" role="alert" aria-live="polite">
+          <div className="update-card-glow-edge" />
+
+          <div className="update-card-header">
+            <div className="update-card-title-wrap">
+              <div className="update-icon-pulse">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+              </div>
+              <div className="update-text-meta">
+                <div className="update-card-heading">
+                  <span className="update-tag">NEW UPDATE</span>
+                  <span className="update-version">v{latestVersion}</span>
+                </div>
+                <p className="update-card-sub">
+                  {downloadComplete
+                    ? "✓ Update package downloaded to Downloads folder!"
+                    : `FML Buddy v${latestVersion} is ready to download.`}
+                </p>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              className="btn-close-update-card"
+              onClick={() => setShowUpdateCard(false)}
+              title="Dismiss notification (you can update anytime)"
+              aria-label="Close update card"
+            >
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+
+          {/* Download Progress Bar */}
+          {isDownloadingUpdate && (
+            <div className="update-card-progress-wrap">
+              <div
+                className="update-card-progress-bar"
+                style={{ width: `${downloadProgress ?? 0}%` }}
+              />
+            </div>
+          )}
+
+          <div className="update-card-actions">
+            <div className="version-diff-pill">
+              <span className="cur-ver">v{CURRENT_VERSION}</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+              <span className="tar-ver">v{latestVersion}</span>
+            </div>
+
+            <div className="update-btns-row">
+              {downloadComplete ? (
+                <button
+                  type="button"
+                  className="btn-action-download is-complete"
+                  onClick={revealDownloadedFile}
+                  title="Reveal FML Buddy.zxp in folder and launch installer"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                  <span>Open Installer</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-action-download"
+                  onClick={downloadUpdate}
+                  disabled={isDownloadingUpdate}
+                  title="Download and update FML Buddy"
+                >
+                  {isDownloadingUpdate ? (
+                    <>
+                      <span className="btn-spinner-mini" />
+                      <span>{downloadProgress !== null ? `Downloading ${downloadProgress}%...` : "Downloading..."}</span>
+                    </>
+                  ) : (
+                    <>
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                        <polyline points="7 10 12 15 17 10"></polyline>
+                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                      </svg>
+                      <span>Download Update</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+          </div>
+        </aside>
+      )}
+
       {/* ================= 1. HEADER BRANDING SECTION ================= */}
       <header className="fml-header-section">
         <div className="header-brand">
@@ -1860,6 +2002,22 @@ export const App: React.FC = () => {
         </div>
 
         <div className="header-status-area">
+          {/* Active Update Pill in Header */}
+          {updateStatus === "available" && (
+            <button
+              type="button"
+              className="btn-update-pill"
+              onClick={() => setShowUpdateCard((prev) => !prev)}
+              title={`Update v${latestVersion} Available! Click to toggle update card`}
+            >
+              <span className="update-pulse-dot" />
+              <span className="update-pill-text">Update v{latestVersion}</span>
+              <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                <polyline points="9 18 15 12 9 6"></polyline>
+              </svg>
+            </button>
+          )}
+
           {/* Font Library Button in Header */}
           <button
             type="button"
@@ -1884,6 +2042,7 @@ export const App: React.FC = () => {
             aria-label="Developer Details"
           >
             <img src={amarDpImg} alt="Amarshafan M" className="dev-header-avatar" />
+            {updateStatus === "available" && <span className="dev-header-badge" />}
           </button>
         </div>
       </header>
@@ -2133,6 +2292,9 @@ export const App: React.FC = () => {
               <circle cx="12" cy="7" r="4"></circle>
             </svg>
             <span>Developer Details</span>
+            {updateStatus === "available" && (
+              <span className="dev-bottom-badge">Update v{latestVersion}</span>
+            )}
             <svg
               width="10"
               height="10"
@@ -2766,21 +2928,32 @@ export const App: React.FC = () => {
                   {updateStatus === "available" && (
                     <button
                       type="button"
-                      className="btn-download-update"
-                      onClick={downloadUpdate}
+                      className={`btn-download-update ${downloadComplete ? "is-complete" : ""}`}
+                      onClick={downloadComplete ? revealDownloadedFile : downloadUpdate}
                       disabled={isDownloadingUpdate}
-                      title="Download latest release update from GitHub"
+                      title={downloadComplete ? "Reveal in folder and launch installer" : "Download latest release update from GitHub"}
                     >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
-                      </svg>
-                      <span>
-                        {isDownloadingUpdate
-                          ? (downloadProgress !== null ? `Downloading ${downloadProgress}%...` : "Downloading...")
-                          : "Download Update"}
-                      </span>
+                      {downloadComplete ? (
+                        <>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12"></polyline>
+                          </svg>
+                          <span>Open Installer</span>
+                        </>
+                      ) : (
+                        <>
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                            <polyline points="7 10 12 15 17 10"></polyline>
+                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                          </svg>
+                          <span>
+                            {isDownloadingUpdate
+                              ? (downloadProgress !== null ? `Downloading ${downloadProgress}%...` : "Downloading...")
+                              : "Download Update"}
+                          </span>
+                        </>
+                      )}
                     </button>
                   )}
 
@@ -2932,7 +3105,11 @@ export const App: React.FC = () => {
             className="context-item"
             onClick={() => {
               setContextMenu(null);
-              checkForUpdates(true);
+              if (updateStatus === "available") {
+                setShowUpdateCard(true);
+              } else {
+                checkForUpdates(true);
+              }
             }}
           >
             <span className="item-main">
@@ -2941,8 +3118,11 @@ export const App: React.FC = () => {
                 <polyline points="7 10 12 15 17 10"></polyline>
                 <line x1="12" y1="15" x2="12" y2="3"></line>
               </svg>
-              <span className="item-label">Check for Updates</span>
+              <span className="item-label">
+                {updateStatus === "available" ? `Update Available (v${latestVersion})` : "Check for Updates"}
+              </span>
             </span>
+            {updateStatus === "available" && <span className="context-update-dot" />}
           </button>
 
           <div className="context-sep"></div>
