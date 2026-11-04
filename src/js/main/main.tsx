@@ -419,6 +419,8 @@ export const App: React.FC = () => {
   const [updateStatus, setUpdateStatus] = useState<"idle" | "checking" | "latest" | "available" | "error">("idle");
   const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [updateDownloadUrl, setUpdateDownloadUrl] = useState<string | null>(null);
+  const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
+  const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
 
   // Manglish IME State
   const [imeWordToken, setImeWordToken] = useState<ActiveWordToken | null>(null);
@@ -800,6 +802,14 @@ export const App: React.FC = () => {
       window.removeEventListener("focus", registerKeys);
       window.removeEventListener("mousedown", registerKeys);
     };
+  }, []);
+
+  // Check GitHub for updates silently in the background on startup
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      checkForUpdates(false);
+    }, 3500);
+    return () => clearTimeout(timer);
   }, []);
 
   // Global Keyboard Shortcuts: Copy (⌘C / Ctrl+C), Paste (⌘V / Ctrl+V), Copy to Clipboard (⌘↵ / Ctrl+Enter)
@@ -1433,7 +1443,97 @@ export const App: React.FC = () => {
       openExternalUrl("https://github.com/amarshafan-m/FML-Buddy/releases");
       return;
     }
-    showToast("Opening GitHub release download...", "info");
+
+    // In-app direct download to Downloads folder if running in Adobe CEP (macOS & Windows)
+    const isCep = Boolean(window.cep_node || (window as any).require);
+    if (isCep) {
+      setIsDownloadingUpdate(true);
+      setDownloadProgress(0);
+      showToast("Downloading FML Buddy update...", "info");
+
+      try {
+        const fs = window.cep_node?.require?.("fs") || (window as any).require?.("fs");
+        const path = window.cep_node?.require?.("path") || (window as any).require?.("path");
+        const os = window.cep_node?.require?.("os") || (window as any).require?.("os");
+        const cp = window.cep_node?.require?.("child_process") || (window as any).require?.("child_process");
+        const NodeBuffer = window.cep_node?.Buffer || (window as any).Buffer;
+
+        if (!fs || !path || !os) throw new Error("CEP Node environment unavailable");
+
+        const platform = getPlatform();
+        const homeDir = os.homedir ? os.homedir() : "";
+        const downloadsDir = homeDir ? path.join(homeDir, "Downloads") : "";
+        const targetDir = (downloadsDir && fs.existsSync(downloadsDir)) ? downloadsDir : (os.tmpdir ? os.tmpdir() : "");
+
+        const fileName = `FML-Buddy-v${latestVersion || "update"}.zxp`;
+        const destPath = path.join(targetDir, fileName);
+
+        const response = await fetch(updateDownloadUrl);
+        if (!response.ok) throw new Error(`HTTP ${response.status}`);
+
+        const contentLength = response.headers.get("content-length");
+        const totalBytes = contentLength ? parseInt(contentLength, 10) : 0;
+
+        let arrayBuffer: ArrayBuffer;
+        if (response.body && totalBytes > 0) {
+          const reader = response.body.getReader();
+          const chunks: Uint8Array[] = [];
+          let receivedBytes = 0;
+
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            if (value) {
+              chunks.push(value);
+              receivedBytes += value.length;
+              const percent = Math.min(100, Math.round((receivedBytes / totalBytes) * 100));
+              setDownloadProgress(percent);
+            }
+          }
+
+          const combined = new Uint8Array(receivedBytes);
+          let offset = 0;
+          for (const chunk of chunks) {
+            combined.set(chunk, offset);
+            offset += chunk.length;
+          }
+          arrayBuffer = combined.buffer;
+        } else {
+          arrayBuffer = await response.arrayBuffer();
+        }
+
+        // Save binary file into user's Downloads directory
+        fs.writeFileSync(destPath, NodeBuffer.from(arrayBuffer));
+        setDownloadProgress(100);
+        showToast(`✓ Downloaded ${fileName} to Downloads folder!`, "success");
+
+        // Cross-platform open / reveal in Finder or Explorer
+        if (cp && cp.exec) {
+          setTimeout(() => {
+            if (platform === "darwin") {
+              // macOS: Highlight in Finder and open installer
+              cp.exec(`open -R "${destPath}"`);
+              cp.exec(`open "${destPath}"`);
+            } else if (platform === "win32") {
+              // Windows: Highlight in Explorer and launch installer
+              cp.exec(`explorer.exe /select,"${destPath}"`);
+              cp.exec(`cmd.exe /c start "" "${destPath}"`);
+            }
+          }, 400);
+        }
+
+        setIsDownloadingUpdate(false);
+        return;
+      } catch (err: any) {
+        console.warn("[FML Buddy] Direct download failed, opening browser:", err);
+      } finally {
+        setIsDownloadingUpdate(false);
+        setDownloadProgress(null);
+      }
+    }
+
+    // Universal browser fallback (works across macOS, Windows, web)
+    showToast("Opening GitHub release download in browser...", "info");
     openExternalUrl(updateDownloadUrl);
   };
 
@@ -2614,6 +2714,7 @@ export const App: React.FC = () => {
                       type="button"
                       className="btn-download-update"
                       onClick={downloadUpdate}
+                      disabled={isDownloadingUpdate}
                       title="Download latest release update from GitHub"
                     >
                       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
@@ -2621,7 +2722,11 @@ export const App: React.FC = () => {
                         <polyline points="7 10 12 15 17 10"></polyline>
                         <line x1="12" y1="15" x2="12" y2="3"></line>
                       </svg>
-                      <span>Download Update</span>
+                      <span>
+                        {isDownloadingUpdate
+                          ? (downloadProgress !== null ? `Downloading ${downloadProgress}%...` : "Downloading...")
+                          : "Download Update"}
+                      </span>
                     </button>
                   )}
                 </div>
