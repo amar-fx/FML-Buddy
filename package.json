@@ -1,7 +1,7 @@
 {
   "name": "com.fmlbuddy.com", 
   "private": true,
-  "version": "1.0.3",
+  "version": "1.0.4",
   "author": "Amarshafan M",
   "type": "module",
   "scripts": {

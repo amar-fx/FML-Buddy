@@ -27,7 +27,7 @@ interface ActionResult {
   message: string;
 }
 
-const CURRENT_VERSION = "1.0.3";
+const CURRENT_VERSION = "1.0.4";
 const GITHUB_REPO_URL = "https://github.com/amarshafan-m/FML-Buddy";
 const GITHUB_FONTS_BASE_URL = "https://raw.githubusercontent.com/amarshafan-m/FML-Buddy/main/Assets/FML_Fonts";
 
@@ -424,6 +424,8 @@ export const App: React.FC = () => {
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [showUpdateCard, setShowUpdateCard] = useState(false);
   const [downloadComplete, setDownloadComplete] = useState(false);
+  const [otaStep, setOtaStep] = useState<"idle" | "downloading" | "installing" | "complete" | "error">("idle");
+  const [otaMessage, setOtaMessage] = useState<string>("");
   const [showUpdatedTestBanner, setShowUpdatedTestBanner] = useState(true);
 
   // Manglish IME State
@@ -1471,23 +1473,33 @@ export const App: React.FC = () => {
     }
   };
 
-  const downloadUpdate = async () => {
+  /**
+   * Over-The-Air (OTA) In-Place Auto-Updater
+   * 1. Downloads the release package (.zxp) in the background.
+   * 2. Automatically unpacks/installs it directly into the Adobe CEP extension directory.
+   * 3. Seamlessly reloads the panel so the updated version is live instantly with 0 manual steps!
+   */
+  const applyOtaUpdate = async () => {
     if (!updateDownloadUrl) {
       const err = "No download URL available";
       setUpdateStatus("error");
       setUpdateError(err);
+      setOtaStep("error");
       showToast(`Update failed: ${err}`, "error");
       openExternalUrl("https://github.com/amarshafan-m/FML-Buddy/releases");
       return;
     }
 
-    // In-app direct download to Downloads folder if running in Adobe CEP (macOS & Windows)
     const isCep = Boolean(window.cep_node || (window as any).require);
     if (isCep) {
       setIsDownloadingUpdate(true);
+      setOtaStep("downloading");
+      setOtaMessage(`Downloading FML Buddy v${latestVersion}...`);
       setDownloadProgress(0);
-      showToast("Downloading FML Buddy update...", "info");
+      setUpdateError(null);
+      showToast(`Downloading FML Buddy v${latestVersion} update...`, "info");
 
+      let tempZxpPath = "";
       try {
         const fs = window.cep_node?.require?.("fs") || (window as any).require?.("fs");
         const path = window.cep_node?.require?.("path") || (window as any).require?.("path");
@@ -1495,21 +1507,18 @@ export const App: React.FC = () => {
         const cp = window.cep_node?.require?.("child_process") || (window as any).require?.("child_process");
         const NodeBuffer = window.cep_node?.Buffer || (window as any).Buffer;
 
-        if (!fs || !path || !os) throw new Error("CEP Node environment unavailable");
+        if (!fs || !path || !os || !cp) throw new Error("CEP Node environment unavailable");
 
         const platform = getPlatform();
-        const homeDir = os.homedir ? os.homedir() : "";
-        const downloadsDir = homeDir ? path.join(homeDir, "Downloads") : "";
-        const targetDir = (downloadsDir && fs.existsSync(downloadsDir)) ? downloadsDir : (os.tmpdir ? os.tmpdir() : "");
-
-        const fileName = "FML Buddy.zxp";
-        const destPath = path.join(targetDir, fileName);
+        const nodeProcess = getNodeProcess();
+        const tmpDir = os.tmpdir ? os.tmpdir() : "/tmp";
+        tempZxpPath = path.join(tmpDir, `fml_buddy_ota_${Date.now()}.zxp`);
 
         const https = window.cep_node?.require?.("https") || (window as any).require?.("https");
         const http = window.cep_node?.require?.("http") || (window as any).require?.("http");
 
-        if (https && fs) {
-          // Node.js HTTPS stream download: follows 302 redirects without CORS restrictions
+        // 1. Download the update package with real-time percentage progress
+        if (https) {
           await new Promise<void>((resolve, reject) => {
             const fetchStream = (targetUrl: string, redirects = 0) => {
               if (redirects > 6) return reject(new Error("Too many redirects"));
@@ -1523,11 +1532,13 @@ export const App: React.FC = () => {
                 }
                 const total = parseInt(res.headers["content-length"] || "0", 10);
                 let received = 0;
-                const stream = fs.createWriteStream(destPath);
+                const stream = fs.createWriteStream(tempZxpPath);
                 res.on("data", (chunk: any) => {
                   received += chunk.length;
                   if (total > 0) {
-                    setDownloadProgress(Math.min(100, Math.round((received / total) * 100)));
+                    const pct = Math.min(100, Math.round((received / total) * 100));
+                    setDownloadProgress(pct);
+                    setOtaMessage(`Downloading update... ${pct}%`);
                   }
                 });
                 res.pipe(stream);
@@ -1536,7 +1547,7 @@ export const App: React.FC = () => {
                   resolve();
                 });
                 stream.on("error", (err: any) => {
-                  try { fs.unlinkSync(destPath); } catch {}
+                  try { fs.unlinkSync(tempZxpPath); } catch {}
                   reject(err);
                 });
               });
@@ -1545,88 +1556,132 @@ export const App: React.FC = () => {
             fetchStream(updateDownloadUrl);
           });
         } else {
-          // Browser fetch fallback
           const response = await fetch(updateDownloadUrl);
           if (!response.ok) throw new Error(`HTTP ${response.status} ${response.statusText || ""}`.trim());
           const arrayBuffer = await response.arrayBuffer();
-          fs.writeFileSync(destPath, NodeBuffer.from(arrayBuffer));
+          fs.writeFileSync(tempZxpPath, NodeBuffer.from(arrayBuffer));
         }
 
         setDownloadProgress(100);
-        setDownloadComplete(true);
-        showToast(`✓ Downloaded ${fileName} to Downloads folder!`, "success");
 
-        // Cross-platform open / reveal in Finder or Explorer
-        if (cp && cp.exec) {
-          setTimeout(() => {
-            if (platform === "darwin") {
-              // macOS: Highlight in Finder and open installer
-              cp.exec(`open -R "${destPath}"`);
-              cp.exec(`open "${destPath}"`);
-            } else if (platform === "win32") {
-              // Windows: Highlight in Explorer and launch installer
-              cp.exec(`explorer.exe /select,"${destPath}"`);
-              cp.exec(`cmd.exe /c start "" "${destPath}"`);
-            }
-          }, 400);
+        // 2. Identify Extension Directory for in-place OTA installation
+        setOtaStep("installing");
+        setOtaMessage("Installing update over the air...");
+        showToast("Installing update in-place...", "info");
+
+        let extDir = "";
+        if (csi && typeof csi.getSystemPath === "function") {
+          try {
+            extDir = csi.getSystemPath("extension");
+          } catch (e) {}
+        }
+        if (!extDir && window.__adobe_cep__ && typeof window.__adobe_cep__.getSystemPath === "function") {
+          try {
+            extDir = window.__adobe_cep__.getSystemPath("extension");
+          } catch (e) {}
+        }
+        if (!extDir) {
+          if (platform === "darwin") {
+            extDir = path.join(os.homedir(), "Library", "Application Support", "Adobe", "CEP", "extensions", "com.fmlbuddy.com");
+          } else {
+            const appData = nodeProcess?.env?.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
+            extDir = path.join(appData, "Adobe", "CEP", "extensions", "com.fmlbuddy.com");
+          }
         }
 
+        // If target is a symlink (like during development), resolve to real path
+        try {
+          if (fs.existsSync(extDir)) {
+            const real = fs.realpathSync(extDir);
+            if (real) extDir = real;
+          } else {
+            fs.mkdirSync(extDir, { recursive: true });
+          }
+        } catch (e) {}
+
+        // 3. Extract the ZXP archive directly over the extension directory
+        await new Promise<void>((resolve, reject) => {
+          if (platform === "darwin") {
+            // macOS: try unzip, fallback to tar
+            cp.execFile("unzip", ["-o", "-q", tempZxpPath, "-d", extDir], (unzipErr: any) => {
+              if (!unzipErr) return resolve();
+              cp.execFile("tar", ["-xf", tempZxpPath, "-C", extDir], (tarErr: any) => {
+                if (!tarErr) return resolve();
+                reject(new Error(`Extraction failed: ${unzipErr.message || tarErr.message}`));
+              });
+            });
+          } else {
+            // Windows: try tar.exe first (fast native on Win10/11), fallback to PowerShell Expand-Archive
+            const winTar = path.join(nodeProcess?.env?.WINDIR || "C:\\Windows", "System32", "tar.exe");
+            const tarBinary = fs.existsSync(winTar) ? winTar : "tar.exe";
+            cp.execFile(tarBinary, ["-xf", tempZxpPath, "-C", extDir], (tarErr: any) => {
+              if (!tarErr) return resolve();
+              const psCmd = `Expand-Archive -LiteralPath '${tempZxpPath.replace(/'/g, "''")}' -DestinationPath '${extDir.replace(/'/g, "''")}' -Force`;
+              cp.execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd], (psErr: any) => {
+                if (!psErr) return resolve();
+                reject(new Error(`Extraction failed: ${tarErr.message || psErr.message}`));
+              });
+            });
+          }
+        });
+
+        // 4. Cleanup temporary file
+        try {
+          if (fs.existsSync(tempZxpPath)) fs.unlinkSync(tempZxpPath);
+        } catch {}
+
+        // 5. Success! Mark complete and trigger reload
+        setOtaStep("complete");
+        setOtaMessage(`✓ Updated to v${latestVersion}! Reloading plugin...`);
+        setDownloadComplete(true);
         setIsDownloadingUpdate(false);
+        showToast(`🎉 FML Buddy v${latestVersion} updated successfully! Reloading...`, "success");
+
+        // Automatically reload after 1.2s to start running the new version
+        setTimeout(() => {
+          if (typeof window !== "undefined" && window.location) {
+            window.location.reload();
+          }
+        }, 1200);
+
         return;
       } catch (err: any) {
-        console.warn("[FML Buddy] Direct download failed, opening browser fallback:", err);
-        const errMsg = err?.message || "Direct download failed";
+        console.error("[FML Buddy] OTA Update failed:", err);
+        try {
+          const fs = window.cep_node?.require?.("fs") || (window as any).require?.("fs");
+          if (tempZxpPath && fs && fs.existsSync(tempZxpPath)) fs.unlinkSync(tempZxpPath);
+        } catch {}
+
+        const errMsg = err?.message || "OTA installation failed";
+        setOtaStep("error");
         setUpdateError(errMsg);
-        showToast(`Download issue (${errMsg}). Opening browser fallback...`, "error");
+        setOtaMessage(`Update failed: ${errMsg}`);
+        showToast(`Update error: ${errMsg}`, "error");
       } finally {
         setIsDownloadingUpdate(false);
-        setDownloadProgress(null);
       }
+      return;
     }
 
-    // Universal browser fallback (works across macOS, Windows, web)
+    // Web browser fallback (outside Adobe CEP)
     try {
-      showToast("Opening GitHub release download in browser...", "info");
+      showToast("Downloading update package in browser...", "info");
       openExternalUrl(updateDownloadUrl);
       setDownloadComplete(true);
+      setOtaStep("complete");
+      setOtaMessage("Package downloaded. In Adobe Premiere Pro, OTA updates install automatically.");
     } catch (err: any) {
-      const errMsg = err?.message || "Failed to open release URL";
-      setUpdateStatus("error");
+      const errMsg = err?.message || "Failed to download update";
+      setOtaStep("error");
       setUpdateError(errMsg);
       showToast(`Update error: ${errMsg}`, "error");
     }
   };
 
-  /** Reveal downloaded FML Buddy.zxp in Finder / Explorer and open installer */
+  const downloadUpdate = applyOtaUpdate;
   const revealDownloadedFile = () => {
-    const isCep = Boolean(window.cep_node || (window as any).require);
-    if (!isCep) {
-      if (updateDownloadUrl) openExternalUrl(updateDownloadUrl);
-      return;
-    }
-    try {
-      const path = window.cep_node?.require?.("path") || (window as any).require?.("path");
-      const os = window.cep_node?.require?.("os") || (window as any).require?.("os");
-      const cp = window.cep_node?.require?.("child_process") || (window as any).require?.("child_process");
-      const fs = window.cep_node?.require?.("fs") || (window as any).require?.("fs");
-      const platform = getPlatform();
-      const homeDir = os.homedir ? os.homedir() : "";
-      const downloadsDir = homeDir ? path.join(homeDir, "Downloads") : "";
-      const targetDir = (downloadsDir && fs.existsSync(downloadsDir)) ? downloadsDir : (os.tmpdir ? os.tmpdir() : "");
-      const destPath = path.join(targetDir, "FML Buddy.zxp");
-
-      if (cp && cp.exec) {
-        if (platform === "darwin") {
-          cp.exec(`open -R "${destPath}"`);
-          cp.exec(`open "${destPath}"`);
-        } else if (platform === "win32") {
-          cp.exec(`explorer.exe /select,"${destPath}"`);
-          cp.exec(`cmd.exe /c start "" "${destPath}"`);
-        }
-        showToast("Opening installer & revealing file...", "info");
-      }
-    } catch (e) {
-      console.warn("Could not reveal file:", e);
+    if (typeof window !== "undefined" && window.location) {
+      window.location.reload();
     }
   };
 
@@ -1905,11 +1960,18 @@ export const App: React.FC = () => {
                 <div className="update-card-heading">
                   <span className="update-tag">NEW UPDATE</span>
                   <span className="update-version">v{latestVersion}</span>
+                  <span className="update-ota-badge">OTA Available</span>
                 </div>
                 <p className="update-card-sub">
-                  {downloadComplete
-                    ? "✓ Update package downloaded to Downloads folder!"
-                    : `FML Buddy v${latestVersion} is ready to download.`}
+                  {otaStep === "downloading"
+                    ? `Downloading update package... ${downloadProgress ?? 0}%`
+                    : otaStep === "installing"
+                    ? "Installing update in-place over the air..."
+                    : otaStep === "complete"
+                    ? `✓ Updated to v${latestVersion}! Reloading plugin...`
+                    : otaStep === "error"
+                    ? `Update error: ${updateError}`
+                    : `FML Buddy v${latestVersion} ready to install in 1 click.`}
                 </p>
               </div>
             </div>
@@ -1928,12 +1990,12 @@ export const App: React.FC = () => {
             </button>
           </div>
 
-          {/* Download Progress Bar */}
-          {isDownloadingUpdate && (
+          {/* Download & Installation Progress Bar */}
+          {(isDownloadingUpdate || otaStep === "installing") && (
             <div className="update-card-progress-wrap">
               <div
-                className="update-card-progress-bar"
-                style={{ width: `${downloadProgress ?? 0}%` }}
+                className={`update-card-progress-bar ${otaStep === "installing" ? "is-indeterminate" : ""}`}
+                style={{ width: otaStep === "installing" ? "100%" : `${downloadProgress ?? 0}%` }}
               />
             </div>
           )}
@@ -1948,39 +2010,49 @@ export const App: React.FC = () => {
             </div>
 
             <div className="update-btns-row">
-              {downloadComplete ? (
+              {otaStep === "complete" ? (
                 <button
                   type="button"
                   className="btn-action-download is-complete"
-                  onClick={revealDownloadedFile}
-                  title="Reveal FML Buddy.zxp in folder and launch installer"
+                  onClick={() => window.location.reload()}
+                  title="Reload FML Buddy to start using the new version"
                 >
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="20 6 9 17 4 12"></polyline>
                   </svg>
-                  <span>Open Installer</span>
+                  <span>Reload Plugin</span>
+                </button>
+              ) : otaStep === "error" ? (
+                <button
+                  type="button"
+                  className="btn-action-download is-error"
+                  onClick={applyOtaUpdate}
+                  title="Retry OTA update"
+                >
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                  </svg>
+                  <span>Retry Update</span>
                 </button>
               ) : (
                 <button
                   type="button"
                   className="btn-action-download"
-                  onClick={downloadUpdate}
-                  disabled={isDownloadingUpdate}
-                  title="Download and update FML Buddy"
+                  onClick={applyOtaUpdate}
+                  disabled={isDownloadingUpdate || otaStep === "installing"}
+                  title="Download and update FML Buddy automatically over the air"
                 >
-                  {isDownloadingUpdate ? (
+                  {isDownloadingUpdate || otaStep === "installing" ? (
                     <>
                       <span className="btn-spinner-mini" />
-                      <span>{downloadProgress !== null ? `Downloading ${downloadProgress}%...` : "Downloading..."}</span>
+                      <span>{otaStep === "installing" ? "Installing OTA..." : `Downloading ${downloadProgress ?? 0}%`}</span>
                     </>
                   ) : (
                     <>
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                        <polyline points="7 10 12 15 17 10"></polyline>
-                        <line x1="12" y1="15" x2="12" y2="3"></line>
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
                       </svg>
-                      <span>Download Update</span>
+                      <span>Update Now</span>
                     </>
                   )}
                 </button>
@@ -2965,29 +3037,29 @@ export const App: React.FC = () => {
                   {updateStatus === "available" && (
                     <button
                       type="button"
-                      className={`btn-download-update ${downloadComplete ? "is-complete" : ""}`}
-                      onClick={downloadComplete ? revealDownloadedFile : downloadUpdate}
-                      disabled={isDownloadingUpdate}
-                      title={downloadComplete ? "Reveal in folder and launch installer" : "Download latest release update from GitHub"}
+                      className={`btn-download-update ${otaStep === "complete" ? "is-complete" : ""}`}
+                      onClick={otaStep === "complete" ? () => window.location.reload() : applyOtaUpdate}
+                      disabled={isDownloadingUpdate || otaStep === "installing"}
+                      title={otaStep === "complete" ? "Reload plugin" : "Install update automatically over the air"}
                     >
-                      {downloadComplete ? (
+                      {otaStep === "complete" ? (
                         <>
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="20 6 9 17 4 12"></polyline>
                           </svg>
-                          <span>Open Installer</span>
+                          <span>Reload Plugin</span>
                         </>
                       ) : (
                         <>
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                            <polyline points="7 10 12 15 17 10"></polyline>
-                            <line x1="12" y1="15" x2="12" y2="3"></line>
+                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
                           </svg>
                           <span>
-                            {isDownloadingUpdate
+                            {otaStep === "installing"
+                              ? "Installing OTA..."
+                              : isDownloadingUpdate
                               ? (downloadProgress !== null ? `Downloading ${downloadProgress}%...` : "Downloading...")
-                              : "Download Update"}
+                              : "Update Now"}
                           </span>
                         </>
                       )}
