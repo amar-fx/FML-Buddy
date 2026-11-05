@@ -193,6 +193,52 @@ body,
     gap: 8px;
     flex-shrink: 0;
 
+    /* Responsive Font Scale Control (Small / Medium / Large) */
+    .font-scale-pill {
+      display: inline-flex;
+      align-items: center;
+      background: #171822;
+      border: 1px solid var(--border-well);
+      border-radius: 6px;
+      padding: 1.5px;
+      flex-shrink: 0;
+
+      .scale-btn {
+        height: 23px;
+        padding: 0 6px;
+        font-size: 11px;
+        font-weight: 600;
+        border: none;
+        background: transparent;
+        color: var(--text-secondary);
+        cursor: pointer;
+        border-radius: 4px;
+        display: inline-flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.15s ease;
+        line-height: 1;
+
+        .scale-indicator {
+          font-size: 9px;
+          margin-left: 1px;
+          font-weight: 700;
+          opacity: 0.85;
+        }
+
+        &:hover:not(.active) {
+          color: #ffffff;
+          background: rgba(255, 255, 255, 0.08);
+        }
+
+        &.active {
+          background-color: var(--accent-purple);
+          color: #ffffff;
+          box-shadow: 0 1px 4px rgba(124, 58, 237, 0.4);
+        }
+      }
+    }
+
     /* Font Library Button in Header */
     .btn-font-library {
       height: 28px;
@@ -331,16 +377,16 @@ body,
     }
   }
 
-  @media (max-width: 580px) {
-    padding: 8px 10px;
+  @media (max-width: 800px), (max-height: 580px) {
+    padding: 7px 10px;
     gap: 8px;
 
     .header-brand {
       gap: 8px;
 
       .brand-logo-squircle {
-        width: 32px;
-        height: 26px;
+        width: 30px;
+        height: 25px;
       }
 
       .brand-text {
@@ -349,7 +395,7 @@ body,
         }
 
         p {
-          max-width: 140px;
+          max-width: 220px;
           font-size: 10px;
         }
       }
@@ -358,12 +404,14 @@ body,
     .header-status-area {
       gap: 6px;
 
-      .btn-dev-header {
-        display: inline-flex;
+      .font-scale-pill .scale-btn {
+        height: 21px;
+        padding: 0 5px;
+        font-size: 10px;
       }
 
       .btn-font-library {
-        height: 26px;
+        height: 25px;
         padding: 0 8px;
         font-size: 10.5px;
         gap: 4px;
@@ -371,31 +419,87 @@ body,
     }
   }
 
-  @media (max-width: 400px) {
-    .header-brand .brand-text p {
+  @media (max-width: 580px), (max-height: 440px) {
+    padding: 5px 8px;
+    gap: 6px;
+
+    .header-brand {
+      gap: 6px;
+
+      .brand-logo-squircle {
+        width: 26px;
+        height: 22px;
+      }
+
+      .brand-text {
+        h1 {
+          font-size: 12.5px;
+        }
+
+        p {
+          display: none;
+        }
+      }
+    }
+
+    .header-status-area {
+      gap: 4px;
+
+      .btn-dev-header {
+        display: inline-flex;
+      }
+
+      .btn-font-library {
+        height: 23px;
+        padding: 0 6px;
+        font-size: 10px;
+        gap: 3px;
+      }
+    }
+  }
+
+  @media (max-width: 420px) {
+    .btn-font-library span {
       display: none;
     }
+  }
+
+  @media (max-height: 350px) {
+    padding: 3px 6px;
   }
 }
 
 /* ==============================================================
-   TWO-COLUMN WORKSPACE
+   TWO-COLUMN WORKSPACE (Responsive fluid grid)
    ============================================================== */
 .fml-workspace-grid {
   flex: 1 1 0;
   min-height: 0;
-  padding: 12px 14px;
+  padding: 10px 12px;
   display: grid;
   grid-template-columns: 1fr 1fr;
   grid-template-rows: 1fr;
-  gap: 12px;
+  gap: 10px;
   overflow: hidden;
 
-  @media (max-width: 680px) {
+  @media (max-width: 800px), (max-height: 580px) {
+    padding: 6px 8px;
+    gap: 7px;
+  }
+
+  @media (max-width: 580px), (max-height: 440px) {
+    padding: 5px 6px;
+    gap: 5px;
+  }
+
+  @media (max-height: 350px) {
+    padding: 4px;
+    gap: 4px;
+  }
+
+  @media (max-width: 540px) and (min-height: 460px) {
     grid-template-columns: 1fr;
     grid-template-rows: 1fr 1fr;
-    gap: 8px;
-    padding: 8px 10px;
     overflow-y: auto;
     -webkit-overflow-scrolling: touch;
   }
@@ -405,19 +509,29 @@ body,
 .fml-card {
   background-color: var(--bg-card);
   border: 1px solid var(--border-card);
-  border-radius: 12px;
-  padding: 12px 14px;
+  border-radius: 10px;
+  padding: 10px 12px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 7px;
   min-height: 0;
   overflow: hidden;
 
-  @media (max-width: 680px) {
-    min-height: 120px;
-    padding: 8px 10px;
-    gap: 6px;
-    border-radius: 10px;
+  @media (max-width: 800px), (max-height: 580px) {
+    padding: 6px 8px;
+    gap: 5px;
+    border-radius: 8px;
+  }
+
+  @media (max-width: 580px), (max-height: 440px) {
+    padding: 5px 6px;
+    gap: 4px;
+    border-radius: 7px;
+  }
+
+  @media (max-height: 350px) {
+    padding: 4px 5px;
+    gap: 3px;
   }
 
   .card-header-row {
@@ -605,14 +719,14 @@ body,
   .fml-segmented-pill {
     background-color: #13141a;
     border: 1px solid var(--border-subtle);
-    border-radius: 8px;
-    padding: 3px;
+    border-radius: 7px;
+    padding: 2.5px;
     display: flex;
     flex-shrink: 0;
 
-    @media (max-width: 680px) {
+    @media (max-width: 800px), (max-height: 580px) {
       padding: 2px;
-      border-radius: 7px;
+      border-radius: 6px;
     }
 
     .pill-btn {
@@ -620,12 +734,12 @@ body,
       display: inline-flex;
       align-items: center;
       justify-content: center;
-      gap: 6px;
+      gap: 5px;
       background: transparent;
       border: none;
-      border-radius: 6px;
-      padding: 6px 12px;
-      font-size: 12px;
+      border-radius: 5px;
+      padding: 5px 10px;
+      font-size: 11.5px;
       font-weight: 500;
       color: var(--text-secondary);
       cursor: pointer;
@@ -636,7 +750,7 @@ body,
       .pill-kbd-group {
         display: inline-flex;
         align-items: center;
-        gap: 2.5px;
+        gap: 2px;
         vertical-align: middle;
 
         .keycap {
@@ -646,18 +760,18 @@ body,
           color: var(--text-secondary);
         }
 
-        @media (max-width: 520px) {
+        @media (max-width: 540px) {
           display: none !important;
         }
       }
 
-      @media (max-width: 680px) {
-        padding: 5px 8px;
-        font-size: 11px;
+      @media (max-width: 800px), (max-height: 580px) {
+        padding: 4px 7px;
+        font-size: 10.5px;
       }
 
-      @media (max-width: 360px) {
-        padding: 4px 6px;
+      @media (max-width: 580px), (max-height: 440px) {
+        padding: 3px 6px;
         font-size: 10px;
       }
 
@@ -689,19 +803,28 @@ body,
   /* Inset Textarea Well */
   .fml-textarea-well {
     flex: 1 1 0;
-    min-height: 40px;
+    min-height: 35px;
     background-color: var(--bg-well);
     border: 1px solid var(--border-well);
     border-radius: 8px;
-    padding: 10px 12px;
+    padding: 8px 10px;
     display: flex;
     flex-direction: column;
     overflow: hidden;
     transition: border-color 0.15s ease;
 
-    @media (max-width: 680px) {
-      padding: 6px 8px;
+    @media (max-width: 800px), (max-height: 580px) {
+      padding: 5px 8px;
       border-radius: 7px;
+    }
+
+    @media (max-width: 580px), (max-height: 440px) {
+      padding: 4px 6px;
+      border-radius: 6px;
+    }
+
+    @media (max-height: 350px) {
+      padding: 3px 5px;
     }
 
     &:focus-within {
@@ -710,22 +833,32 @@ body,
 
     textarea {
       flex: 1 1 0;
-      min-height: 30px;
+      min-height: 25px;
       width: 100%;
       background: transparent;
       border: none;
       outline: none;
       resize: none;
-      font-size: 14.5px;
-      line-height: 1.55;
+      font-size: 12.5px;
+      line-height: 1.44;
       color: #ffffff;
       caret-color: var(--accent-purple-light);
       user-select: text;
       -webkit-user-select: text;
 
-      @media (max-width: 680px) {
-        font-size: 13.5px;
-        line-height: 1.45;
+      @media (max-width: 800px), (max-height: 580px) {
+        font-size: 11.5px;
+        line-height: 1.4;
+      }
+
+      @media (max-width: 580px), (max-height: 440px) {
+        font-size: 10.5px;
+        line-height: 1.34;
+      }
+
+      @media (max-height: 350px) {
+        font-size: 10px;
+        line-height: 1.28;
       }
 
       &::placeholder {
@@ -751,14 +884,14 @@ body,
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding-top: 6px;
-      font-size: 11px;
+      padding-top: 4px;
+      font-size: 10px;
       color: var(--text-muted);
       flex-shrink: 0;
 
-      @media (max-width: 680px) {
-        padding-top: 4px;
-        font-size: 10px;
+      @media (max-height: 440px) {
+        padding-top: 2px;
+        font-size: 9px;
       }
 
       .footer-tag {
@@ -917,9 +1050,35 @@ body,
     }
   }
 
-  @media (max-width: 580px) {
-    padding: 8px 10px;
-    gap: 8px;
+  @media (max-width: 800px), (max-height: 580px) {
+    padding: 6px 10px;
+    gap: 7px;
+
+    .action-info-left .btn-developer-trigger {
+      padding: 3px 8px;
+      font-size: 10px;
+    }
+
+    .action-buttons-right {
+      gap: 6px;
+
+      .btn-reset {
+        height: 31px;
+        padding: 0 10px;
+        font-size: 11px;
+      }
+
+      .btn-copy-clipboard {
+        height: 31px;
+        padding: 0 12px;
+        font-size: 11.5px;
+      }
+    }
+  }
+
+  @media (max-width: 580px), (max-height: 440px) {
+    padding: 5px 8px;
+    gap: 6px;
 
     /* Hide Developer Details in narrow docked state so only Reset and Copy show */
     .action-info-left {
@@ -930,12 +1089,13 @@ body,
       width: 100% !important;
       margin-left: 0 !important;
       display: flex !important;
-      gap: 8px;
+      gap: 6px;
 
       .btn-reset {
         flex: 0 0 auto;
-        height: 35px;
-        padding: 0 12px;
+        height: 28px;
+        padding: 0 9px;
+        font-size: 10.5px;
 
         .btn-kbd,
         .btn-kbd-group {
@@ -946,8 +1106,9 @@ body,
       .btn-copy-clipboard {
         flex: 1 1 auto;
         min-width: 0;
-        height: 35px;
-        padding: 0 14px;
+        height: 28px;
+        padding: 0 10px;
+        font-size: 11px;
         justify-content: center;
 
         .btn-kbd,
@@ -960,6 +1121,16 @@ body,
           overflow: hidden;
           text-overflow: ellipsis;
         }
+      }
+    }
+  }
+
+  @media (max-height: 350px) {
+    padding: 3px 6px;
+    .action-buttons-right {
+      .btn-reset, .btn-copy-clipboard {
+        height: 25px;
+        font-size: 10px;
       }
     }
   }
@@ -2976,4 +3147,67 @@ body,
 @keyframes pulseDot {
   0%, 100% { opacity: 1; transform: scale(1); }
   50% { opacity: 0.4; transform: scale(0.85); }
+}
+
+/* ==============================================================
+   USER-CONTROLLED FONT SCALE MODIFIERS (.font-scale-sm, .font-scale-md, .font-scale-lg)
+   ============================================================== */
+.fml-app-window.font-scale-sm {
+  .fml-textarea-well textarea {
+    font-size: 11px !important;
+    line-height: 1.36 !important;
+  }
+  .card-title {
+    font-size: 11.5px !important;
+  }
+  .fml-segmented-pill .pill-btn {
+    font-size: 10px !important;
+    padding: 3px 7px !important;
+  }
+  .fml-card {
+    padding: 6px 8px !important;
+    gap: 4px !important;
+  }
+  .fml-textarea-well {
+    padding: 5px 7px !important;
+  }
+  .target-encoding-custom .encoding-trigger-btn {
+    height: 24px !important;
+    padding: 0 6px !important;
+    .selected-encoding-label {
+      font-size: 10px !important;
+    }
+  }
+}
+
+.fml-app-window.font-scale-md {
+  .fml-textarea-well textarea {
+    font-size: 12.5px !important;
+    line-height: 1.44 !important;
+  }
+  .card-title {
+    font-size: 12.5px !important;
+  }
+  .fml-segmented-pill .pill-btn {
+    font-size: 11px !important;
+    padding: 4px 10px !important;
+  }
+}
+
+.fml-app-window.font-scale-lg {
+  .fml-textarea-well textarea {
+    font-size: 14.5px !important;
+    line-height: 1.54 !important;
+  }
+  .card-title {
+    font-size: 13.5px !important;
+  }
+  .fml-segmented-pill .pill-btn {
+    font-size: 12px !important;
+    padding: 6px 12px !important;
+  }
+  .fml-card {
+    padding: 12px 14px !important;
+    gap: 8px !important;
+  }
 }

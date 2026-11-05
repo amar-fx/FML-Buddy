@@ -412,6 +412,13 @@ export const App: React.FC = () => {
     } catch (e) {}
     return "";
   });
+  const [fontScale, setFontScale] = useState<"sm" | "md" | "lg">(() => {
+    try {
+      const s = localStorage.getItem("fml_buddy_font_scale");
+      if (s === "sm" || s === "md" || s === "lg") return s;
+    } catch (e) {}
+    return "md";
+  });
   const [targetEncoding, setTargetEncoding] = useState<TargetEncoding>("fml");
   const [isEncodingDropdownOpen, setIsEncodingDropdownOpen] = useState(false);
   const encodingDropdownRef = useRef<HTMLDivElement>(null);
@@ -2037,7 +2044,7 @@ export const App: React.FC = () => {
 
   return (
     <div
-      className="fml-app-window"
+      className={`fml-app-window font-scale-${fontScale}`}
       onContextMenu={handleContextMenu}
     >
       {/* FLOATING STATUS TOAST */}
@@ -2096,6 +2103,49 @@ export const App: React.FC = () => {
               </svg>
             </button>
           )}
+
+          {/* Responsive Font Scale Control (Small / Medium / Large) */}
+          <div className="font-scale-pill" role="group" aria-label="Text Size Zoom">
+            <button
+              type="button"
+              className={`scale-btn ${fontScale === "sm" ? "active" : ""}`}
+              onClick={() => {
+                setFontScale("sm");
+                try { localStorage.setItem("fml_buddy_font_scale", "sm"); } catch (e) {}
+                showToast("Text Size: Compact (S)", "info");
+              }}
+              title="Compact font - Ideal for small laptop screens & narrow panels"
+              aria-label="Small font size"
+            >
+              A<span className="scale-indicator">-</span>
+            </button>
+            <button
+              type="button"
+              className={`scale-btn ${fontScale === "md" ? "active" : ""}`}
+              onClick={() => {
+                setFontScale("md");
+                try { localStorage.setItem("fml_buddy_font_scale", "md"); } catch (e) {}
+                showToast("Text Size: Regular (M)", "info");
+              }}
+              title="Regular font (Standard)"
+              aria-label="Medium font size"
+            >
+              A
+            </button>
+            <button
+              type="button"
+              className={`scale-btn ${fontScale === "lg" ? "active" : ""}`}
+              onClick={() => {
+                setFontScale("lg");
+                try { localStorage.setItem("fml_buddy_font_scale", "lg"); } catch (e) {}
+                showToast("Text Size: Large (L)", "info");
+              }}
+              title="Large font (High-DPI / 4K)"
+              aria-label="Large font size"
+            >
+              A<span className="scale-indicator">+</span>
+            </button>
+          </div>
 
           {/* Font Library Button in Header */}
           <button
