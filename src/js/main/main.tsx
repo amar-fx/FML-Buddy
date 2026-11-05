@@ -2190,18 +2190,6 @@ export const App: React.FC = () => {
             </svg>
             <span>Font Library</span>
           </button>
-
-          {/* Compact Developer Avatar Button (Visible on narrow / docked panels when bottom button is hidden) */}
-          <button
-            type="button"
-            className="btn-dev-header"
-            onClick={() => setShowDevModal(true)}
-            title="Developer Details & Socials (Amarshafan M)"
-            aria-label="Developer Details"
-          >
-            <img src={amarDpImg} alt="Amarshafan M" className="dev-header-avatar" />
-            {updateStatus === "available" && <span className="dev-header-badge" />}
-          </button>
         </div>
       </header>
 
