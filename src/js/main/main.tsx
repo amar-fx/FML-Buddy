@@ -412,13 +412,6 @@ export const App: React.FC = () => {
     } catch (e) {}
     return "";
   });
-  const [fontScale, setFontScale] = useState<"sm" | "md" | "lg">(() => {
-    try {
-      const s = localStorage.getItem("fml_buddy_font_scale");
-      if (s === "sm" || s === "md" || s === "lg") return s;
-    } catch (e) {}
-    return "md";
-  });
   const [targetEncoding, setTargetEncoding] = useState<TargetEncoding>("fml");
   const [isEncodingDropdownOpen, setIsEncodingDropdownOpen] = useState(false);
   const encodingDropdownRef = useRef<HTMLDivElement>(null);
@@ -435,6 +428,85 @@ export const App: React.FC = () => {
   const [shortcutPlatformTab, setShortcutPlatformTab] = useState<"mac" | "windows">(() =>
     checkIsMac() ? "mac" : "windows"
   );
+
+  // =========================================================================
+  // AUTOMATIC DISPLAY & SCREEN SIZE DETECTION ENGINE
+  // Automatically computes optimal font size & responsive scaling based on
+  // live panel dimensions, Windows display scaling (DPR), and screen resolution.
+  // =========================================================================
+  useEffect(() => {
+    const applyAutoDisplayScale = () => {
+      const panelWidth = window.innerWidth;
+      const panelHeight = window.innerHeight;
+      const screenWidth = typeof window.screen !== "undefined" ? window.screen.width : 1920;
+      const screenHeight = typeof window.screen !== "undefined" ? window.screen.height : 1080;
+      const dpr = window.devicePixelRatio || 1;
+
+      // Small screen detection (e.g. 1366x768, or 1080p with 125%/150% scaling, or narrow/short docked panels)
+      const isSmallScreen = screenHeight <= 800 || screenWidth <= 1400 || (screenHeight <= 1080 && dpr >= 1.25);
+      const isShortPanel = panelHeight <= 460;
+      const isNarrowPanel = panelWidth <= 680;
+
+      let autoFontSize = 11.5; // default balanced font size in px
+      let autoLineHeight = 1.36;
+      let cardPadding = "8px 10px";
+      let wellPadding = "6px 10px";
+      let titleFontSize = "12px";
+      let btnHeight = "32px";
+      let btnFontSize = "11.5px";
+
+      if (panelHeight <= 320 || panelWidth <= 380) {
+        // Ultra-compact panel (docked horizontally in tight workspace)
+        autoFontSize = 10;
+        autoLineHeight = 1.26;
+        cardPadding = "5px 6px";
+        wellPadding = "4px 6px";
+        titleFontSize = "10.5px";
+        btnHeight = "26px";
+        btnFontSize = "10px";
+      } else if (panelHeight <= 420 || panelWidth <= 540 || (isSmallScreen && isShortPanel)) {
+        // Compact / small laptop screen (e.g. Windows laptop with Premiere Pro layout)
+        autoFontSize = 10.5;
+        autoLineHeight = 1.32;
+        cardPadding = "6px 8px";
+        wellPadding = "5px 8px";
+        titleFontSize = "11px";
+        btnHeight = "28px";
+        btnFontSize = "10.5px";
+      } else if (isShortPanel || isNarrowPanel || isSmallScreen) {
+        // Medium compact panel
+        autoFontSize = 11;
+        autoLineHeight = 1.34;
+        cardPadding = "7px 9px";
+        wellPadding = "6px 9px";
+        titleFontSize = "11.5px";
+        btnHeight = "30px";
+        btnFontSize = "11px";
+      } else if (panelWidth >= 1100 && panelHeight >= 700 && !isSmallScreen) {
+        // Large monitor / wide panel
+        autoFontSize = 13;
+        autoLineHeight = 1.45;
+        cardPadding = "12px 14px";
+        wellPadding = "8px 12px";
+        titleFontSize = "13px";
+        btnHeight = "36px";
+        btnFontSize = "12.5px";
+      }
+
+      const root = document.documentElement;
+      root.style.setProperty("--fml-auto-font-size", `${autoFontSize}px`);
+      root.style.setProperty("--fml-auto-line-height", `${autoLineHeight}`);
+      root.style.setProperty("--fml-card-padding", cardPadding);
+      root.style.setProperty("--fml-well-padding", wellPadding);
+      root.style.setProperty("--fml-title-font-size", titleFontSize);
+      root.style.setProperty("--fml-btn-height", btnHeight);
+      root.style.setProperty("--fml-btn-font-size", btnFontSize);
+    };
+
+    applyAutoDisplayScale();
+    window.addEventListener("resize", applyAutoDisplayScale);
+    return () => window.removeEventListener("resize", applyAutoDisplayScale);
+  }, []);
 
   useEffect(() => {
     const mac = checkIsMac();
@@ -2044,7 +2116,7 @@ export const App: React.FC = () => {
 
   return (
     <div
-      className={`fml-app-window font-scale-${fontScale}`}
+      className="fml-app-window"
       onContextMenu={handleContextMenu}
     >
       {/* FLOATING STATUS TOAST */}
@@ -2103,49 +2175,6 @@ export const App: React.FC = () => {
               </svg>
             </button>
           )}
-
-          {/* Responsive Font Scale Control (Small / Medium / Large) */}
-          <div className="font-scale-pill" role="group" aria-label="Text Size Zoom">
-            <button
-              type="button"
-              className={`scale-btn ${fontScale === "sm" ? "active" : ""}`}
-              onClick={() => {
-                setFontScale("sm");
-                try { localStorage.setItem("fml_buddy_font_scale", "sm"); } catch (e) {}
-                showToast("Text Size: Compact (S)", "info");
-              }}
-              title="Compact font - Ideal for small laptop screens & narrow panels"
-              aria-label="Small font size"
-            >
-              A<span className="scale-indicator">-</span>
-            </button>
-            <button
-              type="button"
-              className={`scale-btn ${fontScale === "md" ? "active" : ""}`}
-              onClick={() => {
-                setFontScale("md");
-                try { localStorage.setItem("fml_buddy_font_scale", "md"); } catch (e) {}
-                showToast("Text Size: Regular (M)", "info");
-              }}
-              title="Regular font (Standard)"
-              aria-label="Medium font size"
-            >
-              A
-            </button>
-            <button
-              type="button"
-              className={`scale-btn ${fontScale === "lg" ? "active" : ""}`}
-              onClick={() => {
-                setFontScale("lg");
-                try { localStorage.setItem("fml_buddy_font_scale", "lg"); } catch (e) {}
-                showToast("Text Size: Large (L)", "info");
-              }}
-              title="Large font (High-DPI / 4K)"
-              aria-label="Large font size"
-            >
-              A<span className="scale-indicator">+</span>
-            </button>
-          </div>
 
           {/* Font Library Button in Header */}
           <button
@@ -2576,7 +2605,8 @@ export const App: React.FC = () => {
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
               <circle cx="12" cy="7" r="4"></circle>
             </svg>
-            <span>Developer Details</span>
+            <span className="dev-btn-label-full">Developer Details</span>
+            <span className="dev-btn-label-short">Details</span>
             {updateStatus === "available" && (
               <span className="dev-bottom-badge">Update v{latestVersion}</span>
             )}
@@ -2639,7 +2669,8 @@ export const App: React.FC = () => {
               <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
               <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
             </svg>
-            <span>{copiedRecently ? "✓ Copied!" : "Copy to Clipboard"}</span>
+            <span className="copy-btn-label-full">{copiedRecently ? "✓ Copied!" : "Copy to Clipboard"}</span>
+            <span className="copy-btn-label-short">{copiedRecently ? "✓ Copied!" : "Copy"}</span>
             <span className="btn-kbd-group">
               {isMac ? (
                 <>

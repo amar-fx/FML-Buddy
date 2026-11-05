@@ -46,6 +46,13 @@
 }
 
 :root {
+  --fml-auto-font-size: 11.5px;
+  --fml-auto-line-height: 1.36;
+  --fml-card-padding: 8px 10px;
+  --fml-well-padding: 6px 10px;
+  --fml-title-font-size: 12px;
+  --fml-btn-height: 32px;
+  --fml-btn-font-size: 11.5px;
   --bg-app: #14151b;
   --bg-card: #191a23;
   --bg-well: #20222d;
@@ -61,7 +68,7 @@
   --text-secondary: #9ca3af;
   --text-muted: #6b7280;
   --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-  --font-malayalam: "Noto Sans Malayalam", "Malayalam Sangam MN", "Kartika", sans-serif;
+  --font-malayalam: "Noto Sans Malayalam", "Malayalam Sangam MN", "Nirmala UI", "Kartika", sans-serif;
   --font-mono: "SF Mono", "Menlo", "JetBrains Mono", Consolas, monospace;
 }
 
@@ -192,52 +199,6 @@ body,
     align-items: center;
     gap: 8px;
     flex-shrink: 0;
-
-    /* Responsive Font Scale Control (Small / Medium / Large) */
-    .font-scale-pill {
-      display: inline-flex;
-      align-items: center;
-      background: #171822;
-      border: 1px solid var(--border-well);
-      border-radius: 6px;
-      padding: 1.5px;
-      flex-shrink: 0;
-
-      .scale-btn {
-        height: 23px;
-        padding: 0 6px;
-        font-size: 11px;
-        font-weight: 600;
-        border: none;
-        background: transparent;
-        color: var(--text-secondary);
-        cursor: pointer;
-        border-radius: 4px;
-        display: inline-flex;
-        align-items: center;
-        justify-content: center;
-        transition: all 0.15s ease;
-        line-height: 1;
-
-        .scale-indicator {
-          font-size: 9px;
-          margin-left: 1px;
-          font-weight: 700;
-          opacity: 0.85;
-        }
-
-        &:hover:not(.active) {
-          color: #ffffff;
-          background: rgba(255, 255, 255, 0.08);
-        }
-
-        &.active {
-          background-color: var(--accent-purple);
-          color: #ffffff;
-          box-shadow: 0 1px 4px rgba(124, 58, 237, 0.4);
-        }
-      }
-    }
 
     /* Font Library Button in Header */
     .btn-font-library {
@@ -404,11 +365,6 @@ body,
     .header-status-area {
       gap: 6px;
 
-      .font-scale-pill .scale-btn {
-        height: 21px;
-        padding: 0 5px;
-        font-size: 10px;
-      }
 
       .btn-font-library {
         height: 25px;
@@ -510,7 +466,7 @@ body,
   background-color: var(--bg-card);
   border: 1px solid var(--border-card);
   border-radius: 10px;
-  padding: 10px 12px;
+  padding: var(--fml-card-padding, 8px 10px);
   display: flex;
   flex-direction: column;
   gap: 7px;
@@ -518,19 +474,16 @@ body,
   overflow: hidden;
 
   @media (max-width: 800px), (max-height: 580px) {
-    padding: 6px 8px;
     gap: 5px;
     border-radius: 8px;
   }
 
   @media (max-width: 580px), (max-height: 440px) {
-    padding: 5px 6px;
     gap: 4px;
     border-radius: 7px;
   }
 
   @media (max-height: 350px) {
-    padding: 4px 5px;
     gap: 3px;
   }
 
@@ -541,7 +494,7 @@ body,
     flex-shrink: 0;
 
     .card-title {
-      font-size: 13.5px;
+      font-size: var(--fml-title-font-size, 12.5px);
       font-weight: 700;
       color: #ffffff;
       letter-spacing: -0.1px;
@@ -807,24 +760,18 @@ body,
     background-color: var(--bg-well);
     border: 1px solid var(--border-well);
     border-radius: 8px;
-    padding: 8px 10px;
+    padding: var(--fml-well-padding, 6px 10px);
     display: flex;
     flex-direction: column;
     overflow: hidden;
     transition: border-color 0.15s ease;
 
     @media (max-width: 800px), (max-height: 580px) {
-      padding: 5px 8px;
       border-radius: 7px;
     }
 
     @media (max-width: 580px), (max-height: 440px) {
-      padding: 4px 6px;
       border-radius: 6px;
-    }
-
-    @media (max-height: 350px) {
-      padding: 3px 5px;
     }
 
     &:focus-within {
@@ -839,27 +786,12 @@ body,
       border: none;
       outline: none;
       resize: none;
-      font-size: 12.5px;
-      line-height: 1.44;
+      font-size: var(--fml-auto-font-size, 11.5px);
+      line-height: var(--fml-auto-line-height, 1.36);
       color: #ffffff;
       caret-color: var(--accent-purple-light);
       user-select: text;
       -webkit-user-select: text;
-
-      @media (max-width: 800px), (max-height: 580px) {
-        font-size: 11.5px;
-        line-height: 1.4;
-      }
-
-      @media (max-width: 580px), (max-height: 440px) {
-        font-size: 10.5px;
-        line-height: 1.34;
-      }
-
-      @media (max-height: 350px) {
-        font-size: 10px;
-        line-height: 1.28;
-      }
 
       &::placeholder {
         color: var(--text-muted);
@@ -934,7 +866,7 @@ body,
       border-radius: 6px;
       padding: 4px 10px;
       color: #ddd6fe;
-      font-size: 11px;
+      font-size: var(--fml-btn-font-size, 11px);
       font-weight: 600;
       cursor: pointer;
       display: inline-flex;
@@ -943,9 +875,18 @@ body,
       white-space: nowrap;
       transition: all 0.15s ease;
 
+      .dev-btn-label-full {
+        display: inline;
+      }
+
+      .dev-btn-label-short {
+        display: none;
+      }
+
       svg {
         stroke: #c4b5fd;
         transition: stroke 0.15s ease;
+        flex-shrink: 0;
       }
 
       .icon-arrow-out {
@@ -989,13 +930,13 @@ body,
 
     /* Reset Button */
     .btn-reset {
-      height: 36px;
+      height: var(--fml-btn-height, 34px);
       padding: 0 12px;
       border-radius: 7px;
       background-color: var(--bg-well);
       border: 1px solid var(--border-well);
       color: var(--text-secondary);
-      font-size: 12px;
+      font-size: var(--fml-btn-font-size, 11.5px);
       font-weight: 500;
       cursor: pointer;
       display: inline-flex;
@@ -1018,13 +959,13 @@ body,
 
     /* Copy to Clipboard Button (Purple) */
     .btn-copy-clipboard {
-      height: 36px;
-      padding: 0 16px;
+      height: var(--fml-btn-height, 34px);
+      padding: 0 15px;
       border-radius: 7px;
       background-color: var(--accent-purple);
       border: none;
       color: #ffffff;
-      font-size: 12.5px;
+      font-size: var(--fml-btn-font-size, 12px);
       font-weight: 600;
       cursor: pointer;
       display: inline-flex;
@@ -1033,6 +974,14 @@ body,
       white-space: nowrap;
       box-shadow: 0 2px 8px rgba(124, 58, 237, 0.35);
       transition: all 0.15s ease;
+
+      .copy-btn-label-full {
+        display: inline;
+      }
+
+      .copy-btn-label-short {
+        display: none;
+      }
 
       &:hover:not(:disabled) {
         background-color: var(--accent-purple-hover);
@@ -1054,24 +1003,40 @@ body,
     padding: 6px 10px;
     gap: 7px;
 
-    .action-info-left .btn-developer-trigger {
-      padding: 3px 8px;
-      font-size: 10px;
+    .action-info-left {
+      display: flex !important;
+
+      .btn-developer-trigger {
+        padding: 3px 8px;
+        font-size: 10px;
+
+        .dev-btn-label-full {
+          display: none !important;
+        }
+
+        .dev-btn-label-short {
+          display: inline !important;
+        }
+
+        .icon-arrow-out {
+          display: none !important;
+        }
+      }
     }
 
     .action-buttons-right {
       gap: 6px;
 
       .btn-reset {
-        height: 31px;
+        height: 29px;
         padding: 0 10px;
-        font-size: 11px;
+        font-size: 10.5px;
       }
 
       .btn-copy-clipboard {
-        height: 31px;
+        height: 29px;
         padding: 0 12px;
-        font-size: 11.5px;
+        font-size: 11px;
       }
     }
   }
@@ -1080,22 +1045,38 @@ body,
     padding: 5px 8px;
     gap: 6px;
 
-    /* Hide Developer Details in narrow docked state so only Reset and Copy show */
+    /* DEVELOPER DETAILS STAYS FULLY VISIBLE & RESPONSIVE - NEVER HIDDEN */
     .action-info-left {
-      display: none !important;
+      display: flex !important;
+
+      .btn-developer-trigger {
+        padding: 3px 7px;
+        font-size: 9.5px;
+        gap: 4px;
+
+        .dev-btn-label-full {
+          display: none !important;
+        }
+
+        .dev-btn-label-short {
+          display: inline !important;
+        }
+
+        .icon-arrow-out {
+          display: none !important;
+        }
+      }
     }
 
     .action-buttons-right {
-      width: 100% !important;
-      margin-left: 0 !important;
       display: flex !important;
-      gap: 6px;
+      gap: 5px;
 
       .btn-reset {
         flex: 0 0 auto;
-        height: 28px;
-        padding: 0 9px;
-        font-size: 10.5px;
+        height: 27px;
+        padding: 0 8px;
+        font-size: 10px;
 
         .btn-kbd,
         .btn-kbd-group {
@@ -1104,22 +1085,22 @@ body,
       }
 
       .btn-copy-clipboard {
-        flex: 1 1 auto;
-        min-width: 0;
-        height: 28px;
+        flex: 0 0 auto;
+        height: 27px;
         padding: 0 10px;
-        font-size: 11px;
-        justify-content: center;
+        font-size: 10.5px;
+
+        .copy-btn-label-full {
+          display: none !important;
+        }
+
+        .copy-btn-label-short {
+          display: inline !important;
+        }
 
         .btn-kbd,
         .btn-kbd-group {
           display: none !important;
-        }
-
-        span {
-          white-space: nowrap;
-          overflow: hidden;
-          text-overflow: ellipsis;
         }
       }
     }
@@ -1127,10 +1108,16 @@ body,
 
   @media (max-height: 350px) {
     padding: 3px 6px;
+
+    .action-info-left .btn-developer-trigger {
+      padding: 2px 6px;
+      font-size: 9px;
+    }
+
     .action-buttons-right {
       .btn-reset, .btn-copy-clipboard {
-        height: 25px;
-        font-size: 10px;
+        height: 24px;
+        font-size: 9.5px;
       }
     }
   }
@@ -3149,65 +3136,4 @@ body,
   50% { opacity: 0.4; transform: scale(0.85); }
 }
 
-/* ==============================================================
-   USER-CONTROLLED FONT SCALE MODIFIERS (.font-scale-sm, .font-scale-md, .font-scale-lg)
-   ============================================================== */
-.fml-app-window.font-scale-sm {
-  .fml-textarea-well textarea {
-    font-size: 11px !important;
-    line-height: 1.36 !important;
-  }
-  .card-title {
-    font-size: 11.5px !important;
-  }
-  .fml-segmented-pill .pill-btn {
-    font-size: 10px !important;
-    padding: 3px 7px !important;
-  }
-  .fml-card {
-    padding: 6px 8px !important;
-    gap: 4px !important;
-  }
-  .fml-textarea-well {
-    padding: 5px 7px !important;
-  }
-  .target-encoding-custom .encoding-trigger-btn {
-    height: 24px !important;
-    padding: 0 6px !important;
-    .selected-encoding-label {
-      font-size: 10px !important;
-    }
-  }
-}
 
-.fml-app-window.font-scale-md {
-  .fml-textarea-well textarea {
-    font-size: 12.5px !important;
-    line-height: 1.44 !important;
-  }
-  .card-title {
-    font-size: 12.5px !important;
-  }
-  .fml-segmented-pill .pill-btn {
-    font-size: 11px !important;
-    padding: 4px 10px !important;
-  }
-}
-
-.fml-app-window.font-scale-lg {
-  .fml-textarea-well textarea {
-    font-size: 14.5px !important;
-    line-height: 1.54 !important;
-  }
-  .card-title {
-    font-size: 13.5px !important;
-  }
-  .fml-segmented-pill .pill-btn {
-    font-size: 12px !important;
-    padding: 6px 12px !important;
-  }
-  .fml-card {
-    padding: 12px 14px !important;
-    gap: 8px !important;
-  }
-}
