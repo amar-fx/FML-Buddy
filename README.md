@@ -4,13 +4,13 @@
 ### Malayalam Unicode ↔ FML Converter + 220+ Fonts Library for Premiere Pro & After Effects
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-purple.svg)](https://opensource.org/licenses/MIT)
-[![Release](https://img.shields.io/github/v/release/amarshafan-m/FML-Buddy?color=purple)](https://github.com/amarshafan-m/FML-Buddy/releases)
-[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-blue)](https://github.com/amarshafan-m/FML-Buddy)
-[![Host Apps](https://img.shields.io/badge/Adobe-Premiere%20Pro%20%7C%20After%20Effects-orange)](https://github.com/amarshafan-m/FML-Buddy)
+[![Release](https://img.shields.io/github/v/release/amar-fx/FML-Buddy?color=purple)](https://github.com/amar-fx/FML-Buddy/releases)
+[![Platform](https://img.shields.io/badge/Platform-macOS%20%7C%20Windows-blue)](https://github.com/amar-fx/FML-Buddy)
+[![Host Apps](https://img.shields.io/badge/Adobe-Premiere%20Pro%20%7C%20After%20Effects-orange)](https://github.com/amar-fx/FML-Buddy)
 
 **FML Buddy** is an Adobe CEP extension designed for video editors, subtitle creators, and motion designers who work with Malayalam typography in Adobe Premiere Pro and After Effects.
 
-[Download Latest ZXP](https://github.com/amarshafan-m/FML-Buddy/releases/latest) • [Gumroad](https://amarshafan5.gumroad.com/l/fml-buddy) • [Report Issue](https://github.com/amarshafan-m/FML-Buddy/issues)
+[Download Latest ZXP](https://github.com/amar-fx/FML-Buddy/releases/latest) • [Gumroad](https://amarshafan5.gumroad.com/l/fml-buddy) • [Report Issue](https://github.com/amar-fx/FML-Buddy/issues)
 
 </div>
 
@@ -23,6 +23,7 @@
 - **📚 220+ FML & ML-TT Font Library**: Built-in library of over 220 authentic legacy fonts (Karthika, Mohini, Padmanabha, Indulekha, Revathi, Nanditha, Sruthy, Akhila, and the entire FML classic series) with live text preview.
 - **💾 1-Click System Font Installation**: Install individual fonts or bulk-install all 220+ fonts directly into macOS or Windows with one click.
 - **🎯 1-Click Clipboard Integration**: Copy converted output with `⌘ + ↵` (Mac) or `Ctrl + Enter` (Windows) and paste directly into your Essential Graphics text layers or titlers.
+- **🕒 Typed Words & Conversion History**: Automatically records words and sentences you type, convert, or copy. Search, filter, restore back into the editor, or copy with 1-click quick word chips (`⌘ + H` / `Ctrl + H`).
 - **🛑 Zero Host Lag**: Engineered with targeted key interest registration so typing Space, candidate numbers (`1`–`6`), or Copy/Paste never interrupts timeline playback or RAM preview in After Effects.
 - **🎨 Native Adobe Dark Theme**: Modern, responsive interface tailored to match the Adobe Premiere Pro and After Effects workspace.
 
@@ -54,6 +55,7 @@
 | **Copy to Clipboard (Output)** | `⌘ + ↵` | `Ctrl + Enter` |
 | **Copy Selection / All** | `⌘ + C` | `Ctrl + C` |
 | **Paste from Clipboard** | `⌘ + V` | `Ctrl + V` |
+| **Toggle Typed History** | `⌘ + H` | `Ctrl + H` |
 | **Choose Candidate** | `1` - `6` | `1` - `6` |
 | **Commit Selected Candidate** | `Space` / `Enter` | `Space` / `Enter` |
 
@@ -63,7 +65,7 @@
 
 ```bash
 # Clone the repository
-git clone https://github.com/amarshafan-m/FML-Buddy.git
+git clone https://github.com/amar-fx/FML-Buddy.git
 cd FML-Buddy
 
 # Install dependencies
@@ -83,6 +85,6 @@ npm run zxp
 
 ## 📄 License & Credits
 
-Developed with ❤️ by **Amarshafan M** ([Instagram](https://instagram.com/amarshafan) • [GitHub](https://github.com/amarshafan-m)).
+Developed with ❤️ by **Amarshafan M** ([Instagram](https://instagram.com/amarshafan) • [GitHub](https://github.com/amar-fx)).
 
 This project is licensed under the [MIT License](LICENSE). Included Malayalam legacy fonts remain the property of their respective creators.

@@ -17,6 +17,14 @@ import {
 } from "../converters/manglishIme";
 import { getCaretCoordinates } from "../converters/caretPosition";
 import { ImePopover } from "./ImePopover";
+import { HistoryModal } from "./HistoryModal";
+import {
+  loadHistory,
+  recordHistoryEntry,
+  removeHistoryEntry,
+  clearAllHistory,
+  type HistoryItem,
+} from "./historyManager";
 import logoImg from "../assets/logo.png";
 import amarDpImg from "../assets/amar-dp.jpg";
 import "./main.scss";
@@ -27,9 +35,9 @@ interface ActionResult {
   message: string;
 }
 
-const CURRENT_VERSION = "1.0.7";
-const GITHUB_REPO_URL = "https://github.com/amarshafan-m/FML-Buddy";
-const GITHUB_FONTS_BASE_URL = "https://raw.githubusercontent.com/amarshafan-m/FML-Buddy/main/Assets/FML_Fonts";
+const CURRENT_VERSION = "1.0.0";
+const GITHUB_REPO_URL = "https://github.com/amar-fx/FML-Buddy";
+const GITHUB_FONTS_BASE_URL = "https://raw.githubusercontent.com/amar-fx/FML-Buddy/main/Assets/FML_Fonts";
 
 function getNodeBuffer(): any {
   if (typeof Buffer !== "undefined") return Buffer;
@@ -416,6 +424,9 @@ export const App: React.FC = () => {
   const [isEncodingDropdownOpen, setIsEncodingDropdownOpen] = useState(false);
   const encodingDropdownRef = useRef<HTMLDivElement>(null);
   const [showFontLibrary, setShowFontLibrary] = useState(false);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [historyList, setHistoryList] = useState<HistoryItem[]>(() => loadHistory());
+  const autoSaveTimerRef = useRef<any>(null);
   const [showDevModal, setShowDevModal] = useState(false);
   const [fontSearch, setFontSearch] = useState("");
   const [previewText, setPreviewText] = useState("അമർഷഫാൻ എം");
@@ -540,7 +551,6 @@ export const App: React.FC = () => {
   const [downloadComplete, setDownloadComplete] = useState(false);
   const [otaStep, setOtaStep] = useState<"idle" | "downloading" | "installing" | "complete" | "error">("idle");
   const [otaMessage, setOtaMessage] = useState<string>("");
-  const [showUpdatedTestBanner, setShowUpdatedTestBanner] = useState(true);
 
   // Manglish IME State
   const [imeWordToken, setImeWordToken] = useState<ActiveWordToken | null>(null);
@@ -645,6 +655,70 @@ export const App: React.FC = () => {
     }, type === "error" ? 3800 : 2400);
   }, []);
 
+  // Record typed words / sentences into history
+  const saveToHistory = useCallback(
+    (textToSave: string) => {
+      const clean = textToSave ? textToSave.trim() : "";
+      if (!clean || clean === DEFAULT_SAMPLE_TEXT) return;
+      const { unicodeText, outputText: out } = processConversion(clean, inputMode, targetEncoding);
+      const updated = recordHistoryEntry({
+        inputText: clean,
+        unicodeText,
+        outputText: out,
+        mode: inputMode,
+        targetEncoding,
+      });
+      setHistoryList(updated);
+    },
+    [inputMode, targetEncoding]
+  );
+
+  // Debounced auto-save of typed words into history
+  useEffect(() => {
+    if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    if (!inputText || inputText.trim().length < 2 || inputText === DEFAULT_SAMPLE_TEXT) {
+      return;
+    }
+    autoSaveTimerRef.current = setTimeout(() => {
+      saveToHistory(inputText);
+    }, 2000);
+    return () => {
+      if (autoSaveTimerRef.current) clearTimeout(autoSaveTimerRef.current);
+    };
+  }, [inputText, saveToHistory]);
+
+  // Restore entry from history into editor
+  const handleRestoreFromHistory = useCallback(
+    (item: HistoryItem) => {
+      setInputMode(item.mode);
+      setTargetEncoding(item.targetEncoding);
+      setInputText(item.inputText);
+      setShowHistoryModal(false);
+      showToast("Restored from history", "success");
+      setTimeout(() => {
+        if (inputTextareaRef.current) {
+          inputTextareaRef.current.focus();
+          const len = item.inputText.length;
+          inputTextareaRef.current.setSelectionRange(len, len);
+        }
+      }, 50);
+    },
+    [showToast]
+  );
+
+  // Delete single history item
+  const handleDeleteHistoryItem = useCallback((id: string) => {
+    const updated = removeHistoryEntry(id);
+    setHistoryList(updated);
+  }, []);
+
+  // Clear all history
+  const handleClearAllHistory = useCallback(() => {
+    const updated = clearAllHistory();
+    setHistoryList(updated);
+    showToast("History cleared", "info");
+  }, [showToast]);
+
   // Clipboard copy (100% Unicode-safe on Windows & Mac; prevents '?' question mark encoding bugs)
   const copyToClipboard = useCallback(
     async (text: string, isSilent: boolean = false) => {
@@ -741,11 +815,14 @@ export const App: React.FC = () => {
           setTimeout(() => setCopiedRecently(false), 1400);
           showToast("Copied to Clipboard!", "success");
         }
+        if (inputText && inputText.trim() && inputText !== DEFAULT_SAMPLE_TEXT) {
+          saveToHistory(inputText);
+        }
       } else {
         if (!isSilent) showToast("Failed to copy", "error");
       }
     },
-    [showToast]
+    [showToast, inputText, saveToHistory]
   );
 
   // Clipboard paste (100% Unicode-safe on Windows & Mac; prevents '?' question mark encoding bugs)
@@ -926,6 +1003,7 @@ export const App: React.FC = () => {
         setContextMenu(null);
         setImeVisible(false);
         setShowFontLibrary(false);
+        setShowHistoryModal(false);
         setShowDevModal(false);
         setIsEncodingDropdownOpen(false);
       }
@@ -940,6 +1018,9 @@ export const App: React.FC = () => {
 
   // Reset editor text
   const handleReset = useCallback(() => {
+    if (inputText && inputText.trim() && inputText !== DEFAULT_SAMPLE_TEXT) {
+      saveToHistory(inputText);
+    }
     setInputText("");
     setImeVisible(false);
     setImeWordToken(null);
@@ -948,7 +1029,7 @@ export const App: React.FC = () => {
       inputTextareaRef.current.focus();
     }
     showToast("Editor Reset", "info");
-  }, [showToast]);
+  }, [inputText, saveToHistory, showToast]);
 
   // Ensure host application (Premiere Pro / After Effects) intercepts all keys for the panel
   useEffect(() => {
@@ -1129,6 +1210,16 @@ export const App: React.FC = () => {
           e.preventDefault();
           active.select();
         }
+      }
+      // ⌘+H / Ctrl+H: Toggle Typed History Modal
+      else if (
+        isCmdOrCtrl &&
+        !e.shiftKey &&
+        !e.altKey &&
+        (keyLower === "h" || e.code === "KeyH" || e.keyCode === 72)
+      ) {
+        e.preventDefault();
+        setShowHistoryModal((prev) => !prev);
       }
     };
     window.addEventListener("keydown", handleKeyDown, true);
@@ -1553,7 +1644,7 @@ export const App: React.FC = () => {
     if (isManual) showToast("Checking GitHub for updates...", "info");
 
     try {
-      const res = await fetch("https://api.github.com/repos/amarshafan-m/FML-Buddy/releases/latest", {
+      const res = await fetch("https://api.github.com/repos/amar-fx/FML-Buddy/releases/latest", {
         headers: { Accept: "application/vnd.github.v3+json" },
       });
 
@@ -1591,12 +1682,12 @@ export const App: React.FC = () => {
         // Try raw package.json as fallback
         let fallbackSucceeded = false;
         try {
-          const rawPkg = await fetch("https://raw.githubusercontent.com/amarshafan-m/FML-Buddy/main/package.json");
+          const rawPkg = await fetch("https://raw.githubusercontent.com/amar-fx/FML-Buddy/main/package.json");
           if (rawPkg.ok) {
             const pkg = await rawPkg.json();
             const ver = pkg.version;
             setLatestVersion(ver);
-            setUpdateDownloadUrl("https://github.com/amarshafan-m/FML-Buddy/releases");
+            setUpdateDownloadUrl("https://github.com/amar-fx/FML-Buddy/releases");
             setUpdateError(null);
             fallbackSucceeded = true;
             if (ver && isNewerVersion(CURRENT_VERSION, ver)) {
@@ -1640,7 +1731,7 @@ export const App: React.FC = () => {
       setUpdateError(err);
       setOtaStep("error");
       showToast(`Update failed: ${err}`, "error");
-      openExternalUrl("https://github.com/amarshafan-m/FML-Buddy/releases");
+      openExternalUrl("https://github.com/amar-fx/FML-Buddy/releases");
       return;
     }
 
@@ -1835,19 +1926,12 @@ export const App: React.FC = () => {
           if (fs.existsSync(tempZxpPath)) fs.unlinkSync(tempZxpPath);
         } catch {}
 
-        // 5. Success! Mark complete and trigger reload
+        // 5. Success! Mark complete
         setOtaStep("complete");
-        setOtaMessage(`✓ Updated to v${latestVersion}! Reloading plugin...`);
+        setOtaMessage(`✓ Updated to v${latestVersion}! Restart panel to apply.`);
         setDownloadComplete(true);
         setIsDownloadingUpdate(false);
-        showToast(`🎉 FML Buddy v${latestVersion} updated successfully! Reloading...`, "success");
-
-        // Automatically reload after 1.2s to start running the new version
-        setTimeout(() => {
-          if (typeof window !== "undefined" && window.location) {
-            window.location.reload();
-          }
-        }, 1200);
+        showToast(`🎉 FML Buddy v${latestVersion} installed! Please close and reopen the panel to complete.`, "success");
 
         return;
       } catch (err: any) {
@@ -2190,6 +2274,29 @@ export const App: React.FC = () => {
             </svg>
             <span>Font Library</span>
           </button>
+
+          {/* Typed Words & History Button in Header */}
+          <button
+            type="button"
+            className="btn-history"
+            onClick={() => setShowHistoryModal(true)}
+            title={`Typed Words & History (${isMac ? "⌘H" : "Ctrl+H"})`}
+          >
+            <svg
+              width="13"
+              height="13"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <circle cx="12" cy="12" r="10"></circle>
+              <polyline points="12 6 12 12 16 14"></polyline>
+            </svg>
+            <span>History</span>
+          </button>
         </div>
       </header>
 
@@ -2218,10 +2325,10 @@ export const App: React.FC = () => {
                     : otaStep === "installing"
                     ? "Installing update in-place over the air..."
                     : otaStep === "complete"
-                    ? `✓ Updated to v${latestVersion}! Reloading extension...`
+                    ? `✓ Updated to v${latestVersion}! Close and reopen panel to complete.`
                     : otaStep === "error"
                     ? `Update failed: ${updateError}`
-                    : "New version ready. Click Update Now to download, install & reload automatically."}
+                    : "New version ready. Click Update Now to download and install automatically."}
                 </p>
               </div>
             </div>
@@ -2240,13 +2347,19 @@ export const App: React.FC = () => {
                   <button
                     type="button"
                     className="btn-ota-trigger is-complete"
-                    onClick={() => window.location.reload()}
-                    title="Reload FML Buddy"
+                    onClick={() => {
+                      if (csi && typeof csi.closeExtension === "function") {
+                        csi.closeExtension();
+                      } else {
+                        setShowUpdateCard(false);
+                      }
+                    }}
+                    title="Close panel to complete update"
                   >
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <polyline points="20 6 9 17 4 12"></polyline>
                     </svg>
-                    <span>Reload Extension</span>
+                    <span>Close Panel</span>
                   </button>
                 ) : otaStep === "error" ? (
                   <button
@@ -2313,41 +2426,7 @@ export const App: React.FC = () => {
         </div>
       )}
 
-      {/* ================= TEST VERIFICATION CARD: "UPDATED" BANNER ================= */}
-      {showUpdatedTestBanner && updateStatus !== "available" && (
-        <div className="fml-updated-test-banner">
-          <div className="banner-left">
-            <div className="banner-badge-icon">
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.8" strokeLinecap="round" strokeLinejoin="round">
-                <polyline points="20 6 9 17 4 12"></polyline>
-              </svg>
-            </div>
-            <div className="banner-text">
-              <div className="banner-title-row">
-                <span className="banner-pill">UPDATED</span>
-                <span className="banner-version">FML Buddy v{CURRENT_VERSION}</span>
-                <span className="banner-status-tag">Test Verified ✓</span>
-              </div>
-              <p className="banner-desc">
-                OTA Auto-Update successfully installed! This card confirms you are running the updated build.
-              </p>
-            </div>
-          </div>
 
-          <button
-            type="button"
-            className="btn-dismiss-test-banner"
-            onClick={() => setShowUpdatedTestBanner(false)}
-            title="Dismiss test banner"
-            aria-label="Dismiss updated test banner"
-          >
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="18" y1="6" x2="6" y2="18"></line>
-              <line x1="6" y1="6" x2="18" y2="18"></line>
-            </svg>
-          </button>
-        </div>
-      )}
 
       {/* ================= 2. TWO-COLUMN WORKSPACE ================= */}
       <main className="fml-workspace-grid">
@@ -2684,6 +2763,21 @@ export const App: React.FC = () => {
         position={imePosition}
         onSelect={(candidate) => commitCandidate(candidate, " ")}
         onHoverIndex={(idx) => setImeSelectedIndex(idx)}
+      />
+
+      {/* ================= TYPED WORDS & HISTORY MODAL ================= */}
+      <HistoryModal
+        visible={showHistoryModal}
+        onClose={() => setShowHistoryModal(false)}
+        history={historyList}
+        onRestore={handleRestoreFromHistory}
+        onCopyText={(text, label) => {
+          copyToClipboard(text, false);
+          if (label) showToast(`Copied ${label}!`, "success");
+        }}
+        onDelete={handleDeleteHistoryItem}
+        onClearAll={handleClearAllHistory}
+        isMac={isMac}
       />
 
       {/* ================= 5. FONT LIBRARY MODAL ================= */}
@@ -3190,6 +3284,23 @@ export const App: React.FC = () => {
                       <kbd className="keycap">6</kbd>
                     </span>
                   </div>
+                  <div className="shortcut-item">
+                    <span className="sc-label">Toggle Typed History</span>
+                    <span className="sc-kbd-group">
+                      {shortcutPlatformTab === "mac" ? (
+                        <>
+                          <kbd className="keycap">⌘</kbd>
+                          <kbd className="keycap">H</kbd>
+                        </>
+                      ) : (
+                        <>
+                          <kbd className="keycap">Ctrl</kbd>
+                          <span className="sc-plus">+</span>
+                          <kbd className="keycap">H</kbd>
+                        </>
+                      )}
+                    </span>
+                  </div>
                 </div>
               </div>
 
@@ -3233,16 +3344,26 @@ export const App: React.FC = () => {
                     <button
                       type="button"
                       className={`btn-download-update ${otaStep === "complete" ? "is-complete" : ""}`}
-                      onClick={otaStep === "complete" ? () => window.location.reload() : applyOtaUpdate}
+                      onClick={
+                        otaStep === "complete"
+                          ? () => {
+                              if (csi && typeof csi.closeExtension === "function") {
+                                csi.closeExtension();
+                              } else {
+                                setShowDevModal(false);
+                              }
+                            }
+                          : applyOtaUpdate
+                      }
                       disabled={isDownloadingUpdate || otaStep === "installing"}
-                      title={otaStep === "complete" ? "Reload plugin" : "Install update automatically over the air"}
+                      title={otaStep === "complete" ? "Close panel to complete update" : "Install update automatically over the air"}
                     >
                       {otaStep === "complete" ? (
                         <>
                           <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
                             <polyline points="20 6 9 17 4 12"></polyline>
                           </svg>
-                          <span>Reload Plugin</span>
+                          <span>Close Panel</span>
                         </>
                       ) : (
                         <>
@@ -3368,6 +3489,36 @@ export const App: React.FC = () => {
           </button>
 
           <div className="context-sep"></div>
+
+          <button
+            type="button"
+            className="context-item"
+            onClick={() => {
+              setContextMenu(null);
+              setShowHistoryModal(true);
+            }}
+          >
+            <span className="item-main">
+              <svg className="item-icon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="12" cy="12" r="10"></circle>
+                <polyline points="12 6 12 12 16 14"></polyline>
+              </svg>
+              <span className="item-label">Typing History</span>
+            </span>
+            <span className="context-kbd-group">
+              {isMac ? (
+                <>
+                  <kbd className="keycap keycap-xs">⌘</kbd>
+                  <kbd className="keycap keycap-xs">H</kbd>
+                </>
+              ) : (
+                <>
+                  <kbd className="keycap keycap-xs">Ctrl</kbd>
+                  <kbd className="keycap keycap-xs">H</kbd>
+                </>
+              )}
+            </span>
+          </button>
 
           <button
             type="button"

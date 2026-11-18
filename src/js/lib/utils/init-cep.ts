@@ -3,15 +3,19 @@ import { keyRegisterOverride, dropDisable } from "./cep";
 
 export const handleRefresh = () => {
   try {
-    window.location.reload();
+    if (typeof window !== "undefined" && window.location) {
+      window.location.reload();
+    }
   } catch (e) {
-    window.location.href = window.location.href;
+    try {
+      window.location.href = window.location.href;
+    } catch {}
   }
 };
 
 export const handleForceRefresh = () => {
   try {
-    // If in CEP environment, attempt to re-evaluate ExtendScript
+    // If in CEP environment, gracefully re-evaluate ExtendScript without abrupt window navigation
     if (typeof window !== "undefined" && window.cep) {
       try {
         const { csi, evalFile } = require("./bolt");
@@ -27,12 +31,14 @@ export const handleForceRefresh = () => {
       }
     }
 
-    // Force browser / CEF cache-busting reload
-    const currentUrl = new URL(window.location.href);
-    currentUrl.searchParams.set("_force_refresh", Date.now().toString());
-    window.location.href = currentUrl.toString();
+    // Gentle reload without appending crash-inducing query params to file://
+    if (typeof window !== "undefined" && window.location) {
+      window.location.reload();
+    }
   } catch (e) {
-    window.location.reload();
+    try {
+      window.location.href = window.location.href;
+    } catch {}
   }
 };
 
