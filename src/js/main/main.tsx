@@ -35,7 +35,7 @@ interface ActionResult {
   message: string;
 }
 
-const CURRENT_VERSION = "1.0.0";
+const CURRENT_VERSION = "1.0.1";
 const GITHUB_REPO_URL = "https://github.com/amar-fx/FML-Buddy";
 const GITHUB_FONTS_BASE_URL = "https://raw.githubusercontent.com/amar-fx/FML-Buddy/main/Assets/FML_Fonts";
 
