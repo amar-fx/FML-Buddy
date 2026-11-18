@@ -1896,35 +1896,65 @@ export const App: React.FC = () => {
         setOtaMessage("Installing update over the air...");
         showToast("Installing update in-place...", "info");
 
-        let extDir = "";
-        if (csi && typeof csi.getSystemPath === "function") {
+        // Helper to probe directory write permissions
+        const isDirWritable = (d: string): boolean => {
           try {
-            extDir = csi.getSystemPath("extension");
-          } catch (e) {}
-        }
-        if (!extDir && window.__adobe_cep__ && typeof window.__adobe_cep__.getSystemPath === "function") {
-          try {
-            extDir = window.__adobe_cep__.getSystemPath("extension");
-          } catch (e) {}
-        }
-        if (!extDir) {
-          if (platform === "darwin") {
-            extDir = path.join(os.homedir(), "Library", "Application Support", "Adobe", "CEP", "extensions", "com.fmlbuddy.com");
-          } else {
-            const appData = nodeProcess?.env?.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
-            extDir = path.join(appData, "Adobe", "CEP", "extensions", "com.fmlbuddy.com");
+            if (!fs.existsSync(d)) {
+              fs.mkdirSync(d, { recursive: true });
+            }
+            const probe = path.join(d, `.ota_probe_${Date.now()}`);
+            fs.writeFileSync(probe, "ok");
+            fs.unlinkSync(probe);
+            return true;
+          } catch {
+            return false;
           }
+        };
+
+        // User-level writable extension directory (always safe without Windows/macOS Admin privileges)
+        const userExtBase = platform === "darwin"
+          ? path.join(os.homedir(), "Library", "Application Support", "Adobe", "CEP", "extensions")
+          : path.join(nodeProcess?.env?.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Adobe", "CEP", "extensions");
+
+        let currentExtDir = "";
+        if (csi && typeof csi.getSystemPath === "function") {
+          try { currentExtDir = csi.getSystemPath("extension"); } catch (e) {}
+        }
+        if (!currentExtDir && window.__adobe_cep__ && typeof window.__adobe_cep__.getSystemPath === "function") {
+          try { currentExtDir = window.__adobe_cep__.getSystemPath("extension"); } catch (e) {}
         }
 
-        // If target is a symlink (like during development), resolve to real path
-        try {
-          if (fs.existsSync(extDir)) {
-            const real = fs.realpathSync(extDir);
-            if (real) extDir = real;
-          } else {
+        if (currentExtDir && fs.existsSync(currentExtDir)) {
+          try {
+            const real = fs.realpathSync(currentExtDir);
+            if (real) currentExtDir = real;
+          } catch (e) {}
+        }
+
+        // Determine destination folder name
+        const folderName = currentExtDir ? path.basename(currentExtDir) : "com.fmlbuddy.com";
+        const userTargetDir = path.join(userExtBase, folderName);
+
+        // Check if current directory is inside a system-protected location (e.g. Program Files or /Library)
+        const isSystemDir = Boolean(
+          currentExtDir && (
+            (platform === "win32" && (
+              currentExtDir.toLowerCase().includes("program files") ||
+              currentExtDir.toLowerCase().includes("common files")
+            )) ||
+            (platform === "darwin" && currentExtDir.startsWith("/Library"))
+          )
+        );
+
+        // If current folder is system-protected or read-only, switch to user-level extension directory
+        let extDir = currentExtDir;
+        if (!extDir || isSystemDir || !isDirWritable(extDir)) {
+          console.warn(`[FML Buddy OTA] Current dir is system-protected (${currentExtDir}). Extracting to user directory: ${userTargetDir}`);
+          extDir = userTargetDir;
+          if (!fs.existsSync(extDir)) {
             fs.mkdirSync(extDir, { recursive: true });
           }
-        } catch (e) {}
+        }
 
         // 3. Extract the ZXP archive directly over the extension directory
         await new Promise<void>((resolve, reject) => {
@@ -1938,14 +1968,32 @@ export const App: React.FC = () => {
               });
             });
           } else {
-            // Windows: try tar.exe first (fast native on Win10/11), fallback to PowerShell Expand-Archive
+            // Windows: native tar.exe first, fallback to PowerShell Expand-Archive, then elevated UAC if needed
             const winTar = path.join(nodeProcess?.env?.WINDIR || "C:\\Windows", "System32", "tar.exe");
             const tarBinary = fs.existsSync(winTar) ? winTar : "tar.exe";
+
+            if (!fs.existsSync(extDir)) {
+              fs.mkdirSync(extDir, { recursive: true });
+            }
+
             cp.execFile(tarBinary, ["-xf", tempZxpPath, "-C", extDir], (tarErr: any) => {
               if (!tarErr) return resolve();
+
+              // Fallback 1: PowerShell Expand-Archive
               const psCmd = `Expand-Archive -LiteralPath '${tempZxpPath.replace(/'/g, "''")}' -DestinationPath '${extDir.replace(/'/g, "''")}' -Force`;
               cp.execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd], (psErr: any) => {
                 if (!psErr) return resolve();
+
+                // Fallback 2: If permission denied and target was a system dir, try elevated UAC PowerShell
+                if (currentExtDir && (tarErr?.message?.includes("Permission denied") || psErr?.message?.includes("Permission denied"))) {
+                  const elevateCmd = `Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile -ExecutionPolicy Bypass -Command Expand-Archive -LiteralPath \"${tempZxpPath.replace(/'/g, "''")}\" -DestinationPath \"${currentExtDir.replace(/'/g, "''")}\" -Force'`;
+                  cp.execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", elevateCmd], (uacErr: any) => {
+                    if (!uacErr) return resolve();
+                    reject(new Error(`Extraction failed: Administrator permission required. Run Premiere Pro as Administrator or install to %APPDATA%.`));
+                  });
+                  return;
+                }
+
                 reject(new Error(`Extraction failed: ${tarErr.message || psErr.message}`));
               });
             });
