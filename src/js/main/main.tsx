@@ -2428,79 +2428,179 @@ export const App: React.FC = () => {
 
 
 
-      {/* ================= 2. TWO-COLUMN WORKSPACE ================= */}
-      <main className="fml-workspace-grid">
-        {/* ================= LEFT COLUMN: INPUT ================= */}
-        <section className="fml-card">
-          <div className="card-header-row">
-            <h2 className="card-title">Input</h2>
-            <button
-              type="button"
-              className="btn-card-action"
-              onClick={pasteFromClipboard}
-              title={`Paste from Clipboard (${isMac ? "⌘V" : "Ctrl+V"})`}
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
-                <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
-              </svg>
-              <span>Paste</span>
-              <span className="action-kbd-group">
-                {isMac ? (
-                  <>
-                    <kbd className="keycap keycap-xs">⌘</kbd>
-                    <kbd className="keycap keycap-xs">V</kbd>
-                  </>
-                ) : (
-                  <>
-                    <kbd className="keycap keycap-xs">Ctrl</kbd>
-                    <kbd className="keycap keycap-xs">V</kbd>
-                  </>
+      {/* ================= 2. UNIFIED FULL-WIDTH WORKSPACE ================= */}
+      <main className="fml-workspace-single">
+        <section className="fml-card fml-card-unified">
+          {/* Top Controls Row: Mode Pill (Left) & Actions/Target Encoding (Right) */}
+          <div className="card-header-row unified-header-row">
+            {/* Segmented Pill: Manglish (Phonetic) | Malayalam (Unicode) */}
+            <div className="fml-segmented-pill">
+              <button
+                type="button"
+                className={`pill-btn ${inputMode === "manglish" ? "active" : ""}`}
+                onClick={() => {
+                  setInputMode("manglish");
+                  localStorage.setItem("fml_buddy_mode", "manglish");
+                  showToast("Mode: Manglish (Phonetic)", "info");
+                  if (inputText === DEFAULT_SAMPLE_TEXT) {
+                    setInputText("");
+                  }
+                  if (inputTextareaRef.current) {
+                    inputTextareaRef.current.focus();
+                  }
+                }}
+                title="Manglish Phonetic"
+              >
+                <span>Manglish (Phonetic)</span>
+              </button>
+              <button
+                type="button"
+                className={`pill-btn ${inputMode === "unicode" ? "active" : ""}`}
+                onClick={() => {
+                  setInputMode("unicode");
+                  setImeVisible(false);
+                  localStorage.setItem("fml_buddy_mode", "unicode");
+                  showToast("Mode: Malayalam (Unicode)", "info");
+                  if (inputTextareaRef.current) {
+                    inputTextareaRef.current.focus();
+                  }
+                }}
+                title="Malayalam Unicode"
+              >
+                <span>Malayalam (Unicode)</span>
+              </button>
+            </div>
+
+            {/* Right Side: Paste & Target Encoding Dropdown */}
+            <div className="card-header-actions">
+              <button
+                type="button"
+                className="btn-card-action"
+                onClick={pasteFromClipboard}
+                title={`Paste from Clipboard (${isMac ? "⌘V" : "Ctrl+V"})`}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path>
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1"></rect>
+                </svg>
+                <span>Paste</span>
+                <span className="action-kbd-group">
+                  {isMac ? (
+                    <>
+                      <kbd className="keycap keycap-xs">⌘</kbd>
+                      <kbd className="keycap keycap-xs">V</kbd>
+                    </>
+                  ) : (
+                    <>
+                      <kbd className="keycap keycap-xs">Ctrl</kbd>
+                      <kbd className="keycap keycap-xs">V</kbd>
+                    </>
+                  )}
+                </span>
+              </button>
+
+              {/* Target Encoding Dropdown */}
+              <div className="target-encoding-custom" ref={encodingDropdownRef}>
+                <button
+                  type="button"
+                  className={`encoding-trigger-btn ${isEncodingDropdownOpen ? "open" : ""}`}
+                  onClick={() => setIsEncodingDropdownOpen((prev) => !prev)}
+                  aria-haspopup="listbox"
+                  aria-expanded={isEncodingDropdownOpen}
+                  title="Target Font Encoding"
+                >
+                  <span className="encoding-prefix">Target:</span>
+                  <span className="selected-encoding-label">
+                    {targetEncoding === "roman"
+                      ? "Roman"
+                      : "FML / ML-TT"}
+                  </span>
+                  <svg
+                    className={`chevron-icon ${isEncodingDropdownOpen ? "rotated" : ""}`}
+                    width="11"
+                    height="11"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.4"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="6 9 12 15 18 9"></polyline>
+                  </svg>
+                </button>
+
+                {isEncodingDropdownOpen && (
+                  <div className="encoding-dropdown-menu" role="listbox">
+                    <div
+                      className={`encoding-option ${targetEncoding === "fml" ? "active" : ""}`}
+                      role="option"
+                      aria-selected={targetEncoding === "fml"}
+                      onClick={() => {
+                        setTargetEncoding("fml");
+                        localStorage.setItem("fml_buddy_encoding", "fml");
+                        setIsEncodingDropdownOpen(false);
+                        showToast("Target: FML / ML-TT (Legacy)", "info");
+                      }}
+                    >
+                      <div className="option-label-wrap">
+                        <span className="option-title">FML / ML-TT (Legacy)</span>
+                        <span className="option-desc">Authentic Malayalam fonts</span>
+                      </div>
+                      {targetEncoding === "fml" && (
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="var(--accent-purple-light)"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                      )}
+                    </div>
+
+                    <div
+                      className={`encoding-option ${targetEncoding === "roman" ? "active" : ""}`}
+                      role="option"
+                      aria-selected={targetEncoding === "roman"}
+                      onClick={() => {
+                        setTargetEncoding("roman");
+                        localStorage.setItem("fml_buddy_encoding", "roman");
+                        setIsEncodingDropdownOpen(false);
+                        showToast("Target: Roman (English Translit)", "info");
+                      }}
+                    >
+                      <div className="option-label-wrap">
+                        <span className="option-title">Roman (English Translit)</span>
+                        <span className="option-desc">Phonetic English script</span>
+                      </div>
+                      {targetEncoding === "roman" && (
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="var(--accent-purple-light)"
+                          strokeWidth="2.5"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                        >
+                          <polyline points="20 6 9 17 4 12"></polyline>
+                        </svg>
+                      )}
+                    </div>
+                  </div>
                 )}
-              </span>
-            </button>
+              </div>
+            </div>
           </div>
 
-          {/* Segmented Pill: Manglish (Phonetic) | Malayalam (Unicode) */}
-          <div className="fml-segmented-pill">
-            <button
-              type="button"
-              className={`pill-btn ${inputMode === "manglish" ? "active" : ""}`}
-              onClick={() => {
-                setInputMode("manglish");
-                localStorage.setItem("fml_buddy_mode", "manglish");
-                showToast("Mode: Manglish (Phonetic)", "info");
-                if (inputText === DEFAULT_SAMPLE_TEXT) {
-                  setInputText("");
-                }
-                if (inputTextareaRef.current) {
-                  inputTextareaRef.current.focus();
-                }
-              }}
-              title="Manglish Phonetic"
-            >
-              <span>Manglish (Phonetic)</span>
-            </button>
-            <button
-              type="button"
-              className={`pill-btn ${inputMode === "unicode" ? "active" : ""}`}
-              onClick={() => {
-                setInputMode("unicode");
-                setImeVisible(false);
-                localStorage.setItem("fml_buddy_mode", "unicode");
-                showToast("Mode: Malayalam (Unicode)", "info");
-                if (inputTextareaRef.current) {
-                  inputTextareaRef.current.focus();
-                }
-              }}
-              title="Malayalam Unicode"
-            >
-              <span>Malayalam (Unicode)</span>
-            </button>
-          </div>
-
-          {/* Inset Textarea Well */}
-          <div className="fml-textarea-well">
+          {/* Spacious Inset Textarea Well */}
+          <div className="fml-textarea-well fml-textarea-unified">
             <textarea
               ref={inputTextareaRef}
               className="input-area"
@@ -2518,132 +2618,18 @@ export const App: React.FC = () => {
             />
 
             <div className="well-footer-row">
-              <span className="footer-tag">
-                {inputMode === "manglish" ? "Manglish IME" : "Unicode"}
-              </span>
-              <span className="footer-counter">{inputText.length} / 2000</span>
-            </div>
-          </div>
-        </section>
-
-        {/* ================= RIGHT COLUMN: OUTPUT ================= */}
-        <section className="fml-card">
-          <div className="card-header-row">
-            <h2 className="card-title">Output</h2>
-
-            {/* Custom Modern Dark-Theme Encoding Dropdown */}
-            <div className="target-encoding-custom" ref={encodingDropdownRef}>
-              <button
-                type="button"
-                className={`encoding-trigger-btn ${isEncodingDropdownOpen ? "open" : ""}`}
-                onClick={() => setIsEncodingDropdownOpen((prev) => !prev)}
-                aria-haspopup="listbox"
-                aria-expanded={isEncodingDropdownOpen}
-              >
-                <span className="selected-encoding-label">
-                  {targetEncoding === "roman"
-                    ? "Roman (English Translit)"
-                    : "FML / ML-TT (Legacy)"}
+              <div className="footer-left-status">
+                <span className="footer-tag">
+                  {inputMode === "manglish" ? "Manglish IME" : "Malayalam Unicode"}
                 </span>
-                <svg
-                  className={`chevron-icon ${isEncodingDropdownOpen ? "rotated" : ""}`}
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <polyline points="6 9 12 15 18 9"></polyline>
-                </svg>
-              </button>
-
-              {isEncodingDropdownOpen && (
-                <div className="encoding-dropdown-menu" role="listbox">
-                  <div
-                    className={`encoding-option ${targetEncoding === "fml" ? "active" : ""}`}
-                    role="option"
-                    aria-selected={targetEncoding === "fml"}
-                    onClick={() => {
-                      setTargetEncoding("fml");
-                      localStorage.setItem("fml_buddy_encoding", "fml");
-                      setIsEncodingDropdownOpen(false);
-                      showToast("Target: FML / ML-TT (Legacy)", "info");
-                    }}
-                  >
-                    <div className="option-label-wrap">
-                      <span className="option-title">FML / ML-TT (Legacy)</span>
-                      <span className="option-desc">Authentic Malayalam fonts</span>
-                    </div>
-                    {targetEncoding === "fml" && (
-                      <svg
-                        width="13"
-                        height="13"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="var(--accent-purple-light)"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                    )}
-                  </div>
-
-                  <div
-                    className={`encoding-option ${targetEncoding === "roman" ? "active" : ""}`}
-                    role="option"
-                    aria-selected={targetEncoding === "roman"}
-                    onClick={() => {
-                      setTargetEncoding("roman");
-                      localStorage.setItem("fml_buddy_encoding", "roman");
-                      setIsEncodingDropdownOpen(false);
-                      showToast("Target: Roman (English Translit)", "info");
-                    }}
-                  >
-                    <div className="option-label-wrap">
-                      <span className="option-title">Roman (English Translit)</span>
-                      <span className="option-desc">Phonetic English script</span>
-                    </div>
-                    {targetEncoding === "roman" && (
-                      <svg
-                        width="13"
-                        height="13"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="var(--accent-purple-light)"
-                        strokeWidth="2.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                      </svg>
-                    )}
-                  </div>
-                </div>
-              )}
-            </div>
-          </div>
-
-          {/* Inset Textarea Well */}
-          <div className="fml-textarea-well">
-            <textarea
-              ref={outputTextareaRef}
-              className="output-area"
-              value={outputText}
-              readOnly
-              placeholder="Converted FML / ML-TT characters will appear here..."
-              spellCheck={false}
-            />
-
-            <div className="well-footer-row">
-              <span className="footer-tag">
-                {targetEncoding === "roman" ? "Roman Translit" : "FML / ML-TT"}
-              </span>
-              <span className="footer-counter">{outputText.length} chars</span>
+                {outputText ? (
+                  <span className="footer-conversion-badge">
+                    <span className="badge-dot" />
+                    <span>Converted ({targetEncoding === "roman" ? "Roman" : "FML"}): {outputText.length} chars ready to paste</span>
+                  </span>
+                ) : null}
+              </div>
+              <span className="footer-counter">{inputText.length} / 2000</span>
             </div>
           </div>
         </section>
