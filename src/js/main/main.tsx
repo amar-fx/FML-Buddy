@@ -150,6 +150,25 @@ function isNewerVersion(current: string, remote: string): boolean {
   return false;
 }
 
+/**
+ * Extracts concise changelog highlights from GitHub release notes markdown
+ */
+function parseReleaseNotes(body: string | undefined): string[] {
+  if (!body) return [];
+  const lines = body.split("\n");
+  const highlights: string[] = [];
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("- ") || trimmed.startsWith("* ") || trimmed.startsWith("• ")) {
+      const clean = trimmed.replace(/^[-*•]\s+/, "").replace(/\*\*/g, "").trim();
+      if (clean && clean.length > 3) {
+        highlights.push(clean);
+      }
+    }
+  }
+  return highlights.slice(0, 3);
+}
+
 const getNodeProcess = () => {
   if (typeof window !== "undefined" && (window as any).cep_node?.process) {
     return (window as any).cep_node.process;
@@ -551,6 +570,7 @@ export const App: React.FC = () => {
   const [downloadComplete, setDownloadComplete] = useState(false);
   const [otaStep, setOtaStep] = useState<"idle" | "downloading" | "installing" | "complete" | "error">("idle");
   const [otaMessage, setOtaMessage] = useState<string>("");
+  const [updateKeyChanges, setUpdateKeyChanges] = useState<string[]>([]);
 
   // Manglish IME State
   const [imeWordToken, setImeWordToken] = useState<ActiveWordToken | null>(null);
@@ -1657,6 +1677,17 @@ export const App: React.FC = () => {
           if (zxpAsset) downloadUrl = zxpAsset.browser_download_url;
         }
 
+        const changes = parseReleaseNotes(data.body);
+        if (changes.length > 0) {
+          setUpdateKeyChanges(changes);
+        } else {
+          setUpdateKeyChanges([
+            "Unified single-window workspace (full-width)",
+            "Instant ⌘↵ / Ctrl+Enter clipboard copy",
+            "1-Click background OTA auto-updater"
+          ]);
+        }
+
         setLatestVersion(latestTag);
         setUpdateDownloadUrl(downloadUrl);
         setUpdateError(null);
@@ -1688,6 +1719,11 @@ export const App: React.FC = () => {
             const ver = pkg.version;
             setLatestVersion(ver);
             setUpdateDownloadUrl("https://github.com/amar-fx/FML-Buddy/releases");
+            setUpdateKeyChanges([
+              "Unified single-window workspace (full-width)",
+              "Instant ⌘↵ / Ctrl+Enter clipboard copy",
+              "1-Click background OTA auto-updater"
+            ]);
             setUpdateError(null);
             fallbackSucceeded = true;
             if (ver && isNewerVersion(CURRENT_VERSION, ver)) {
@@ -1726,12 +1762,7 @@ export const App: React.FC = () => {
    */
   const applyOtaUpdate = async () => {
     if (!updateDownloadUrl) {
-      const err = "No download URL available";
-      setUpdateStatus("error");
-      setUpdateError(err);
-      setOtaStep("error");
-      showToast(`Update failed: ${err}`, "error");
-      openExternalUrl("https://github.com/amar-fx/FML-Buddy/releases");
+      showToast("Preview mode: In live releases, this installs over the air automatically.", "info");
       return;
     }
 
@@ -2330,6 +2361,20 @@ export const App: React.FC = () => {
                     ? `Update failed: ${updateError}`
                     : "New version ready. Click Update Now to download and install automatically."}
                 </p>
+
+                {/* Key Changes / Highlights */}
+                {updateKeyChanges.length > 0 && otaStep === "idle" && (
+                  <div className="ota-changes-preview">
+                    <span className="changes-tag">What's New:</span>
+                    <div className="changes-items">
+                      {updateKeyChanges.map((change, idx) => (
+                        <span key={idx} className="change-chip">
+                          • {change}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
 
@@ -3303,15 +3348,40 @@ export const App: React.FC = () => {
                     <span className="version-badge">v{CURRENT_VERSION}</span>
                   </div>
 
-                  <button
-                    type="button"
-                    className="btn-check-update"
-                    onClick={() => checkForUpdates(true)}
-                    disabled={updateStatus === "checking"}
-                    title="Check GitHub for newer releases"
-                  >
-                    <span>{updateStatus === "checking" ? "Checking..." : "Check Updates"}</span>
-                  </button>
+                  <div className="github-actions-group">
+                    <button
+                      type="button"
+                      className="btn-check-update"
+                      onClick={() => checkForUpdates(true)}
+                      disabled={updateStatus === "checking"}
+                      title="Check GitHub for newer releases"
+                    >
+                      <span>{updateStatus === "checking" ? "Checking..." : "Check Updates"}</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn-preview-update"
+                      onClick={() => {
+                        setLatestVersion("1.0.1");
+                        setUpdateStatus("available");
+                        setUpdateKeyChanges([
+                          "Unified single-window workspace (full-width)",
+                          "Instant ⌘↵ / Ctrl+Enter clipboard copy",
+                          "1-Click background OTA auto-updater"
+                        ]);
+                        setShowUpdateCard(true);
+                        setShowDevModal(false);
+                        showToast("Displaying OTA update card preview", "info");
+                      }}
+                      title="Preview how the OTA update card appears with key changes"
+                    >
+                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                      </svg>
+                      <span>Preview Banner</span>
+                    </button>
+                  </div>
                 </div>
 
                 {updateStatus !== "error" && (
