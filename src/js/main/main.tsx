@@ -3328,75 +3328,61 @@ export const App: React.FC = () => {
                   </button>
                 </div>
 
-                <div className="github-update-status">
-                  <div className={`status-left ${updateStatus === "available" ? "has-update" : ""} ${updateStatus === "error" ? "has-error" : ""}`}>
-                    <span className="status-dot-mini"></span>
-                    <span className="status-text" title={updateError || undefined}>
-                      {updateStatus === "checking" && "Querying GitHub API..."}
-                      {updateStatus === "available" && `New version available: v${latestVersion}!`}
-                      {updateStatus === "latest" && `FML Buddy is up to date (v${CURRENT_VERSION}).`}
-                      {updateStatus === "idle" && "Latest release tracked via GitHub repository."}
-                      {updateStatus === "error" && (updateError ? `Error: ${updateError}` : "Update check failed")}
-                    </span>
-                  </div>
+                {updateStatus !== "error" && (
+                  <div className="github-update-status">
+                    <div className={`status-left ${updateStatus === "available" ? "has-update" : ""}`}>
+                      <span className="status-dot-mini"></span>
+                      <span className="status-text" title={updateError || undefined}>
+                        {updateStatus === "checking" && "Querying GitHub API..."}
+                        {updateStatus === "available" && `New version available: v${latestVersion}!`}
+                        {updateStatus === "latest" && `FML Buddy is up to date (v${CURRENT_VERSION}).`}
+                        {updateStatus === "idle" && "Latest release tracked via GitHub repository."}
+                      </span>
+                    </div>
 
-                  {updateStatus === "available" && (
-                    <button
-                      type="button"
-                      className={`btn-download-update ${otaStep === "complete" ? "is-complete" : ""}`}
-                      onClick={
-                        otaStep === "complete"
-                          ? () => {
-                              if (csi && typeof csi.closeExtension === "function") {
-                                csi.closeExtension();
-                              } else {
-                                setShowDevModal(false);
+                    {updateStatus === "available" && (
+                      <button
+                        type="button"
+                        className={`btn-download-update ${otaStep === "complete" ? "is-complete" : ""}`}
+                        onClick={
+                          otaStep === "complete"
+                            ? () => {
+                                if (csi && typeof csi.closeExtension === "function") {
+                                  csi.closeExtension();
+                                } else {
+                                  setShowDevModal(false);
+                                }
                               }
-                            }
-                          : applyOtaUpdate
-                      }
-                      disabled={isDownloadingUpdate || otaStep === "installing"}
-                      title={otaStep === "complete" ? "Close panel to complete update" : "Install update automatically over the air"}
-                    >
-                      {otaStep === "complete" ? (
-                        <>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12"></polyline>
-                          </svg>
-                          <span>Close Panel</span>
-                        </>
-                      ) : (
-                        <>
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
-                            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                          </svg>
-                          <span>
-                            {otaStep === "installing"
-                              ? "Installing OTA..."
-                              : isDownloadingUpdate
-                              ? (downloadProgress !== null ? `Downloading ${downloadProgress}%...` : "Downloading...")
-                              : "Update Now"}
-                          </span>
-                        </>
-                      )}
-                    </button>
-                  )}
-
-                  {updateStatus === "error" && (
-                    <button
-                      type="button"
-                      className="btn-retry-update"
-                      onClick={() => checkForUpdates(true)}
-                      title="Retry checking for updates"
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="23 4 23 10 17 10"></polyline>
-                        <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-                      </svg>
-                      <span>Retry</span>
-                    </button>
-                  )}
-                </div>
+                            : applyOtaUpdate
+                        }
+                        disabled={isDownloadingUpdate || otaStep === "installing"}
+                        title={otaStep === "complete" ? "Close panel to complete update" : "Install update automatically over the air"}
+                      >
+                        {otaStep === "complete" ? (
+                          <>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12"></polyline>
+                            </svg>
+                            <span>Close Panel</span>
+                          </>
+                        ) : (
+                          <>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4">
+                              <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
+                            </svg>
+                            <span>
+                              {otaStep === "installing"
+                                ? "Installing OTA..."
+                                : isDownloadingUpdate
+                                ? (downloadProgress !== null ? `Downloading ${downloadProgress}%...` : "Downloading...")
+                                : "Update Now"}
+                            </span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
             </div>
 
