@@ -1071,7 +1071,7 @@ export const App: React.FC = () => {
   useEffect(() => {
     const timer = setTimeout(() => {
       checkForUpdates(false);
-    }, 3500);
+    }, 800);
     return () => clearTimeout(timer);
   }, []);
 
@@ -2331,139 +2331,102 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      {/* ================= FIRST-CLASS TOP OTA UPDATE CARD ================= */}
+      {/* ================= COMPACT NATIVE UPDATE BANNER ================= */}
       {showUpdateCard && updateStatus === "available" && (
-        <div className="fml-top-update-card" role="alert" aria-live="polite">
-          <div className="update-glow-line" />
-
-          <div className="card-main-content">
-            <div className="card-left-section">
-              <div className="ota-icon-badge">
-                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                  <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                </svg>
-              </div>
-
-              <div className="ota-text-block">
-                <div className="ota-title-row">
-                  <span className="ota-badge">NEW UPDATE</span>
-                  <span className="ota-ver-title">FML Buddy v{latestVersion}</span>
-                  <span className="ota-pill-tag">1-Click OTA</span>
-                </div>
-                <p className="ota-description">
-                  {otaStep === "downloading"
-                    ? `Downloading update package... ${downloadProgress ?? 0}%`
-                    : otaStep === "installing"
-                    ? "Installing update in-place over the air..."
-                    : otaStep === "complete"
-                    ? `✓ Updated to v${latestVersion}! Close and reopen panel to complete.`
-                    : otaStep === "error"
-                    ? `Update failed: ${updateError}`
-                    : "New version ready. Click Update Now to download and install automatically."}
-                </p>
-
-                {/* Key Changes / Highlights */}
-                {updateKeyChanges.length > 0 && otaStep === "idle" && (
-                  <div className="ota-changes-preview">
-                    <span className="changes-tag">What's New:</span>
-                    <div className="changes-items">
-                      {updateKeyChanges.map((change, idx) => (
-                        <span key={idx} className="change-chip">
-                          • {change}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-                )}
-              </div>
+        <div className="fml-update-banner" role="alert" aria-live="polite">
+          <div className="banner-left">
+            <div className="banner-icon">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
             </div>
 
-            <div className="card-right-section">
-              <div className="ver-change-badge">
-                <span className="v-from">v{CURRENT_VERSION}</span>
-                <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6">
-                  <polyline points="9 18 15 12 9 6"></polyline>
-                </svg>
-                <span className="v-to">v{latestVersion}</span>
+            <div className="banner-text">
+              <div className="banner-title-line">
+                <span className="banner-title">Update available: v{latestVersion}</span>
+                <span className="banner-ver-diff">(v{CURRENT_VERSION} → v{latestVersion})</span>
               </div>
-
-              <div className="ota-action-btns">
-                {otaStep === "complete" ? (
-                  <button
-                    type="button"
-                    className="btn-ota-trigger is-complete"
-                    onClick={() => {
-                      if (csi && typeof csi.closeExtension === "function") {
-                        csi.closeExtension();
-                      } else {
-                        setShowUpdateCard(false);
-                      }
-                    }}
-                    title="Close panel to complete update"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                    <span>Close Panel</span>
-                  </button>
-                ) : otaStep === "error" ? (
-                  <button
-                    type="button"
-                    className="btn-ota-trigger is-error"
-                    onClick={applyOtaUpdate}
-                    title="Retry OTA update"
-                  >
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="23 4 23 10 17 10"></polyline>
-                      <path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path>
-                    </svg>
-                    <span>Retry Update</span>
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn-ota-trigger"
-                    onClick={applyOtaUpdate}
-                    disabled={isDownloadingUpdate || otaStep === "installing"}
-                    title="Download and install update automatically over the air"
-                  >
-                    {isDownloadingUpdate || otaStep === "installing" ? (
-                      <>
-                        <span className="btn-spinner-mini" />
-                        <span>{otaStep === "installing" ? "Installing OTA..." : `Downloading ${downloadProgress ?? 0}%`}</span>
-                      </>
-                    ) : (
-                      <>
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                        </svg>
-                        <span>Update Now</span>
-                      </>
-                    )}
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  className="btn-dismiss-ota-card"
-                  onClick={() => setShowUpdateCard(false)}
-                  title="Close update notification"
-                  aria-label="Close update card"
-                >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <line x1="18" y1="6" x2="6" y2="18"></line>
-                    <line x1="6" y1="6" x2="18" y2="18"></line>
-                  </svg>
-                </button>
-              </div>
+              <span className="banner-subtext">
+                {otaStep === "downloading"
+                  ? `Downloading update... ${downloadProgress ?? 0}%`
+                  : otaStep === "installing"
+                  ? "Installing in background..."
+                  : otaStep === "complete"
+                  ? `Installed! Close and reopen panel to complete.`
+                  : otaStep === "error"
+                  ? `Update failed: ${updateError}`
+                  : updateKeyChanges.length > 0
+                  ? updateKeyChanges.join(" · ")
+                  : "Click Update to install automatically."}
+              </span>
             </div>
           </div>
 
-          {/* Full-Width Progress Track */}
+          <div className="banner-actions">
+            {otaStep === "complete" ? (
+              <button
+                type="button"
+                className="btn-banner-action is-complete"
+                onClick={() => {
+                  if (csi && typeof csi.closeExtension === "function") {
+                    csi.closeExtension();
+                  } else {
+                    setShowUpdateCard(false);
+                  }
+                }}
+                title="Close panel to apply update"
+              >
+                <span>Close Panel</span>
+              </button>
+            ) : otaStep === "error" ? (
+              <button
+                type="button"
+                className="btn-banner-action is-error"
+                onClick={applyOtaUpdate}
+                title="Retry update"
+              >
+                <span>Retry</span>
+              </button>
+            ) : (
+              <button
+                type="button"
+                className="btn-banner-action"
+                onClick={applyOtaUpdate}
+                disabled={isDownloadingUpdate || otaStep === "installing"}
+                title="Update automatically in background"
+              >
+                {isDownloadingUpdate || otaStep === "installing" ? (
+                  <>
+                    <span className="btn-spinner-mini" />
+                    <span>{otaStep === "installing" ? "Installing..." : `${downloadProgress ?? 0}%`}</span>
+                  </>
+                ) : (
+                  <span>Update</span>
+                )}
+              </button>
+            )}
+
+            <button
+              type="button"
+              className="btn-banner-close"
+              onClick={() => setShowUpdateCard(false)}
+              title="Dismiss"
+              aria-label="Dismiss update banner"
+            >
+              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+
+          {/* Minimal bottom progress line during download */}
           {(isDownloadingUpdate || otaStep === "installing") && (
-            <div className="ota-progress-track">
+            <div className="banner-progress-bar">
               <div
-                className={`ota-progress-fill ${otaStep === "installing" ? "is-indeterminate" : ""}`}
+                className={`banner-progress-fill ${otaStep === "installing" ? "is-indeterminate" : ""}`}
                 style={{ width: otaStep === "installing" ? "100%" : `${downloadProgress ?? 0}%` }}
               />
             </div>
@@ -3348,40 +3311,15 @@ export const App: React.FC = () => {
                     <span className="version-badge">v{CURRENT_VERSION}</span>
                   </div>
 
-                  <div className="github-actions-group">
-                    <button
-                      type="button"
-                      className="btn-check-update"
-                      onClick={() => checkForUpdates(true)}
-                      disabled={updateStatus === "checking"}
-                      title="Check GitHub for newer releases"
-                    >
-                      <span>{updateStatus === "checking" ? "Checking..." : "Check Updates"}</span>
-                    </button>
-
-                    <button
-                      type="button"
-                      className="btn-preview-update"
-                      onClick={() => {
-                        setLatestVersion("1.0.1");
-                        setUpdateStatus("available");
-                        setUpdateKeyChanges([
-                          "Unified single-window workspace (full-width)",
-                          "Instant ⌘↵ / Ctrl+Enter clipboard copy",
-                          "1-Click background OTA auto-updater"
-                        ]);
-                        setShowUpdateCard(true);
-                        setShowDevModal(false);
-                        showToast("Displaying OTA update card preview", "info");
-                      }}
-                      title="Preview how the OTA update card appears with key changes"
-                    >
-                      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                        <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"></polygon>
-                      </svg>
-                      <span>Preview Banner</span>
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    className="btn-check-update"
+                    onClick={() => checkForUpdates(true)}
+                    disabled={updateStatus === "checking"}
+                    title="Check GitHub for newer releases"
+                  >
+                    <span>{updateStatus === "checking" ? "Checking..." : "Check Updates"}</span>
+                  </button>
                 </div>
 
                 {updateStatus !== "error" && (
