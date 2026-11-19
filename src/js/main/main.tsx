@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef, useCallback, useMemo } from "react";
+import React, { useEffect, useLayoutEffect, useState, useRef, useCallback, useMemo } from "react";
 import { csi, evalTS, subscribeBackgroundColor } from "../lib/utils/bolt";
 import { handleRefresh, handleForceRefresh } from "../lib/utils/init-cep";
 import { keyRegisterOverride } from "../lib/utils/cep";
@@ -35,7 +35,7 @@ interface ActionResult {
   message: string;
 }
 
-const CURRENT_VERSION = "1.0.2";
+const CURRENT_VERSION = "1.0.3";
 const GITHUB_REPO_URL = "https://github.com/amar-fx/FML-Buddy";
 const GITHUB_FONTS_BASE_URL = "https://raw.githubusercontent.com/amar-fx/FML-Buddy/main/Assets/FML_Fonts";
 
@@ -567,6 +567,7 @@ export const App: React.FC = () => {
   const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
   const [showUpdateCard, setShowUpdateCard] = useState<boolean>(false);
+  const [updateCardMode, setUpdateCardMode] = useState<"update_available" | "whats_new">("update_available");
   const [downloadComplete, setDownloadComplete] = useState(false);
   const [otaStep, setOtaStep] = useState<"idle" | "downloading" | "installing" | "complete" | "error">("idle");
   const [otaMessage, setOtaMessage] = useState<string>("");
@@ -582,6 +583,7 @@ export const App: React.FC = () => {
   // DOM Refs
   const inputTextareaRef = useRef<HTMLTextAreaElement>(null);
   const outputTextareaRef = useRef<HTMLTextAreaElement>(null);
+  const contextMenuRef = useRef<HTMLDivElement>(null);
   const toastTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const imeReqIdRef = useRef<number>(0);
 
@@ -1068,8 +1070,17 @@ export const App: React.FC = () => {
     };
   }, []);
 
-  // Check GitHub for updates silently in the background on startup
+  // Check for newly installed version or updates on startup
   useEffect(() => {
+    try {
+      const seenVersion = localStorage.getItem("fml_buddy_seen_version");
+      if (seenVersion !== CURRENT_VERSION) {
+        localStorage.setItem("fml_buddy_seen_version", CURRENT_VERSION);
+        setUpdateCardMode("whats_new");
+        setShowUpdateCard(true);
+      }
+    } catch (e) {}
+
     const timer = setTimeout(() => {
       checkForUpdates(false);
     }, 800);
@@ -1694,6 +1705,7 @@ export const App: React.FC = () => {
           setUpdateDownloadUrl(downloadUrl);
           setUpdateError(null);
           setUpdateStatus("available");
+          setUpdateCardMode("update_available");
           setShowUpdateCard(true);
         } else {
           setUpdateError(null);
@@ -1722,6 +1734,7 @@ export const App: React.FC = () => {
               setLatestVersion(ver);
               setUpdateDownloadUrl("https://github.com/amar-fx/FML-Buddy/releases");
               setUpdateStatus("available");
+              setUpdateCardMode("update_available");
               setShowUpdateCard(true);
             }
             setUpdateError(null);
@@ -2272,20 +2285,57 @@ export const App: React.FC = () => {
       setContextTarget("general");
     }
 
-    const menuWidth = 195;
-    const menuHeight = 275;
-    const padding = 12;
+    const estimatedWidth = 190;
+    const estimatedHeight = 310;
+    const padding = 6;
     let x = e.clientX;
     let y = e.clientY;
 
-    if (y + menuHeight > window.innerHeight - padding) {
-      y = Math.max(padding, window.innerHeight - menuHeight - padding);
+    if (y + estimatedHeight > window.innerHeight - padding) {
+      y = Math.max(padding, window.innerHeight - estimatedHeight - padding);
     }
-    if (x + menuWidth > window.innerWidth - padding) {
-      x = Math.max(padding, window.innerWidth - menuWidth - padding);
+    if (x + estimatedWidth > window.innerWidth - padding) {
+      x = Math.max(padding, window.innerWidth - estimatedWidth - padding);
     }
     setContextMenu({ x, y });
   };
+
+  // Dynamically clamp context menu completely inside panel viewport after render
+  useLayoutEffect(() => {
+    if (!contextMenu || !contextMenuRef.current) return;
+    const el = contextMenuRef.current;
+    const rect = el.getBoundingClientRect();
+    const pad = 6;
+    let nextX = contextMenu.x;
+    let nextY = contextMenu.y;
+    let needsAdjustment = false;
+
+    // Pull upward if bottom overflows
+    if (rect.bottom > window.innerHeight - pad) {
+      nextY = Math.max(pad, window.innerHeight - rect.height - pad);
+      needsAdjustment = true;
+    }
+
+    // Pull leftward if right overflows
+    if (rect.right > window.innerWidth - pad) {
+      nextX = Math.max(pad, window.innerWidth - rect.width - pad);
+      needsAdjustment = true;
+    }
+
+    // Ensure not off-screen at top/left
+    if (nextY < pad) {
+      nextY = pad;
+      needsAdjustment = true;
+    }
+    if (nextX < pad) {
+      nextX = pad;
+      needsAdjustment = true;
+    }
+
+    if (needsAdjustment && (nextX !== contextMenu.x || nextY !== contextMenu.y)) {
+      setContextMenu({ x: nextX, y: nextY });
+    }
+  }, [contextMenu]);
 
   return (
     <div
@@ -2389,7 +2439,7 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      {/* ================= NATIVE DESKTOP UPDATE DIALOG ================= */}
+      {/* ================= NATIVE DESKTOP UPDATE / WHAT'S NEW DIALOG ================= */}
       {showUpdateCard && (
         <div
           className="fml-modal-backdrop fml-update-backdrop"
@@ -2406,11 +2456,17 @@ export const App: React.FC = () => {
             <div className="update-dialog-header">
               <div className="header-left">
                 <div className="update-dialog-title-row">
-                  <h3 id="update-dialog-title">Update Available</h3>
-                  <span className="version-tag">v{latestVersion || "1.0.2"}</span>
+                  <h3 id="update-dialog-title">
+                    {updateCardMode === "whats_new" ? "What's New in FML Buddy" : "Update Available"}
+                  </h3>
+                  <span className="version-tag">
+                    v{updateCardMode === "whats_new" ? CURRENT_VERSION : (latestVersion || CURRENT_VERSION)}
+                  </span>
                 </div>
                 <p className="update-version-label">
-                  FML Buddy {latestVersion || "1.0.2"} is ready to install (current: v{CURRENT_VERSION}).
+                  {updateCardMode === "whats_new"
+                    ? `FML Buddy v${CURRENT_VERSION} is active with major workspace and engine upgrades.`
+                    : `FML Buddy ${latestVersion || CURRENT_VERSION} is ready to install (current: v${CURRENT_VERSION}).`}
                 </p>
               </div>
 
@@ -2427,7 +2483,11 @@ export const App: React.FC = () => {
 
             {/* Release Notes Body */}
             <div className="update-dialog-body">
-              <div className="notes-heading">What's New in Version {latestVersion || "1.0.2"}</div>
+              <div className="notes-heading">
+                {updateCardMode === "whats_new"
+                  ? `Highlights in Version ${CURRENT_VERSION}`
+                  : `What's New in Version ${latestVersion || CURRENT_VERSION}`}
+              </div>
 
               <ul className="notes-list">
                 <li className="notes-item">
@@ -2459,77 +2519,90 @@ export const App: React.FC = () => {
                 </li>
               </ul>
 
-              {/* Progress bar / Status during OTA */}
-              {(otaStep === "downloading" || otaStep === "installing" || otaStep === "complete" || otaStep === "error") && (
-                <div className={`update-status-panel ota-${otaStep}`}>
-                  <div className="status-row">
-                    <span className="status-label">
-                      {otaStep === "downloading" && `Downloading update... ${downloadProgress ?? 0}%`}
-                      {otaStep === "installing" && "Installing update in-place..."}
-                      {otaStep === "complete" && "✓ Update installed! Close and reopen panel to finish."}
-                      {otaStep === "error" && `Error: ${updateError || "Update failed"}`}
-                    </span>
-                    {otaStep === "downloading" && (
-                      <span className="status-pct">{downloadProgress ?? 0}%</span>
+              {/* Progress bar / Status during OTA (shown in update_available mode) */}
+              {updateCardMode === "update_available" &&
+                (otaStep === "downloading" || otaStep === "installing" || otaStep === "complete" || otaStep === "error") && (
+                  <div className={`update-status-panel ota-${otaStep}`}>
+                    <div className="status-row">
+                      <span className="status-label">
+                        {otaStep === "downloading" && `Downloading update... ${downloadProgress ?? 0}%`}
+                        {otaStep === "installing" && "Installing update in-place..."}
+                        {otaStep === "complete" && "✓ Update installed! Close and reopen panel to finish."}
+                        {otaStep === "error" && `Error: ${updateError || "Update failed"}`}
+                      </span>
+                      {otaStep === "downloading" && (
+                        <span className="status-pct">{downloadProgress ?? 0}%</span>
+                      )}
+                    </div>
+                    {(otaStep === "downloading" || otaStep === "installing") && (
+                      <div className="status-progress-track">
+                        <div
+                          className={`status-progress-bar ${otaStep === "installing" ? "is-indeterminate" : ""}`}
+                          style={{ width: otaStep === "installing" ? "100%" : `${downloadProgress ?? 0}%` }}
+                        />
+                      </div>
                     )}
                   </div>
-                  {(otaStep === "downloading" || otaStep === "installing") && (
-                    <div className="status-progress-track">
-                      <div
-                        className={`status-progress-bar ${otaStep === "installing" ? "is-indeterminate" : ""}`}
-                        style={{ width: otaStep === "installing" ? "100%" : `${downloadProgress ?? 0}%` }}
-                      />
-                    </div>
-                  )}
-                </div>
-              )}
+                )}
             </div>
 
             {/* Footer */}
             <div className="update-dialog-footer">
-              <button
-                type="button"
-                className="btn-dialog-secondary"
-                onClick={() => setShowUpdateCard(false)}
-              >
-                Later
-              </button>
-
-              {otaStep === "complete" ? (
-                <button
-                  type="button"
-                  className="btn-dialog-primary is-complete"
-                  onClick={() => {
-                    if (csi && typeof csi.closeExtension === "function") {
-                      csi.closeExtension();
-                    } else {
-                      setShowUpdateCard(false);
-                    }
-                  }}
-                >
-                  Close Panel
-                </button>
-              ) : otaStep === "error" ? (
-                <button
-                  type="button"
-                  className="btn-dialog-primary is-retry"
-                  onClick={applyOtaUpdate}
-                >
-                  Retry
-                </button>
-              ) : (
+              {updateCardMode === "whats_new" ? (
                 <button
                   type="button"
                   className="btn-dialog-primary"
-                  onClick={applyOtaUpdate}
-                  disabled={isDownloadingUpdate || otaStep === "installing"}
+                  onClick={() => setShowUpdateCard(false)}
                 >
-                  {isDownloadingUpdate || otaStep === "installing" ? (
-                    otaStep === "installing" ? "Installing..." : `Downloading ${downloadProgress ?? 0}%...`
-                  ) : (
-                    "Update Now"
-                  )}
+                  Got It
                 </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    className="btn-dialog-secondary"
+                    onClick={() => setShowUpdateCard(false)}
+                  >
+                    Later
+                  </button>
+
+                  {otaStep === "complete" ? (
+                    <button
+                      type="button"
+                      className="btn-dialog-primary is-complete"
+                      onClick={() => {
+                        if (csi && typeof csi.closeExtension === "function") {
+                          csi.closeExtension();
+                        } else {
+                          setShowUpdateCard(false);
+                        }
+                      }}
+                    >
+                      Close Panel
+                    </button>
+                  ) : otaStep === "error" ? (
+                    <button
+                      type="button"
+                      className="btn-dialog-primary is-retry"
+                      onClick={applyOtaUpdate}
+                    >
+                      Retry
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-dialog-primary"
+                      onClick={applyOtaUpdate}
+                      disabled={isDownloadingUpdate || otaStep === "installing"}
+                    >
+                      {isDownloadingUpdate || otaStep === "installing" ? (
+                        otaStep === "installing" ? "Installing..." : `Downloading ${downloadProgress ?? 0}%...`
+                      ) : (
+                        "Update Now"
+                      )}
+                    </button>
+                  )}
+                </>
               )}
             </div>
           </div>
@@ -3413,15 +3486,30 @@ export const App: React.FC = () => {
                     <span className="version-badge">v{CURRENT_VERSION}</span>
                   </div>
 
-                  <button
-                    type="button"
-                    className="btn-check-update"
-                    onClick={() => checkForUpdates(true)}
-                    disabled={updateStatus === "checking"}
-                    title="Check GitHub for newer releases"
-                  >
-                    <span>{updateStatus === "checking" ? "Checking..." : "Check Updates"}</span>
-                  </button>
+                  <div className="github-actions-wrap">
+                    <button
+                      type="button"
+                      className="btn-whats-new"
+                      onClick={() => {
+                        setUpdateCardMode("whats_new");
+                        setShowUpdateCard(true);
+                        setShowDevModal(false);
+                      }}
+                      title="View release notes and highlights for this version"
+                    >
+                      <span>What's New</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      className="btn-check-update"
+                      onClick={() => checkForUpdates(true)}
+                      disabled={updateStatus === "checking"}
+                      title="Check GitHub for newer releases"
+                    >
+                      <span>{updateStatus === "checking" ? "Checking..." : "Check Updates"}</span>
+                    </button>
+                  </div>
                 </div>
 
                 {updateStatus !== "error" && (
@@ -3498,8 +3586,13 @@ export const App: React.FC = () => {
       {/* ================= 7. RIGHT CLICK CONTEXT MENU ================= */}
       {contextMenu && (
         <div
+          ref={contextMenuRef}
           className="fml-context-menu"
-          style={{ top: `${contextMenu.y}px`, left: `${contextMenu.x}px` }}
+          style={{
+            top: `${contextMenu.y}px`,
+            left: `${contextMenu.x}px`,
+            maxHeight: `calc(100vh - ${Math.max(6, contextMenu.y + 6)}px)`,
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           <div className="context-menu-info" style={{ padding: "4px 8px 6px", display: "flex", flexDirection: "column", gap: "2px" }}>
@@ -3643,6 +3736,7 @@ export const App: React.FC = () => {
             onClick={() => {
               setContextMenu(null);
               if (updateStatus === "available") {
+                setUpdateCardMode("update_available");
                 setShowUpdateCard(true);
               } else {
                 checkForUpdates(true);
