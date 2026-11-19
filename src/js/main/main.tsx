@@ -35,7 +35,7 @@ interface ActionResult {
   message: string;
 }
 
-const CURRENT_VERSION = "1.0.1";
+const CURRENT_VERSION = "1.0.2";
 const GITHUB_REPO_URL = "https://github.com/amar-fx/FML-Buddy";
 const GITHUB_FONTS_BASE_URL = "https://raw.githubusercontent.com/amar-fx/FML-Buddy/main/Assets/FML_Fonts";
 
@@ -566,7 +566,7 @@ export const App: React.FC = () => {
   const [updateDownloadUrl, setUpdateDownloadUrl] = useState<string | null>(null);
   const [isDownloadingUpdate, setIsDownloadingUpdate] = useState(false);
   const [downloadProgress, setDownloadProgress] = useState<number | null>(null);
-  const [showUpdateCard, setShowUpdateCard] = useState(false);
+  const [showUpdateCard, setShowUpdateCard] = useState<boolean>(false);
   const [downloadComplete, setDownloadComplete] = useState(false);
   const [otaStep, setOtaStep] = useState<"idle" | "downloading" | "installing" | "complete" | "error">("idle");
   const [otaMessage, setOtaMessage] = useState<string>("");
@@ -1025,6 +1025,7 @@ export const App: React.FC = () => {
         setShowFontLibrary(false);
         setShowHistoryModal(false);
         setShowDevModal(false);
+        setShowUpdateCard(false);
         setIsEncodingDropdownOpen(false);
       }
     };
@@ -1688,14 +1689,14 @@ export const App: React.FC = () => {
           ]);
         }
 
-        setLatestVersion(latestTag);
-        setUpdateDownloadUrl(downloadUrl);
-        setUpdateError(null);
-
         if (latestTag && isNewerVersion(CURRENT_VERSION, latestTag)) {
+          setLatestVersion(latestTag);
+          setUpdateDownloadUrl(downloadUrl);
+          setUpdateError(null);
           setUpdateStatus("available");
           setShowUpdateCard(true);
         } else {
+          setUpdateError(null);
           setUpdateStatus("latest");
           if (isManual) showToast(`FML Buddy is up to date (v${CURRENT_VERSION})`, "success");
         }
@@ -1717,22 +1718,14 @@ export const App: React.FC = () => {
           if (rawPkg.ok) {
             const pkg = await rawPkg.json();
             const ver = pkg.version;
-            setLatestVersion(ver);
-            setUpdateDownloadUrl("https://github.com/amar-fx/FML-Buddy/releases");
-            setUpdateKeyChanges([
-              "Unified single-window workspace (full-width)",
-              "Instant ⌘↵ / Ctrl+Enter clipboard copy",
-              "1-Click background OTA auto-updater"
-            ]);
-            setUpdateError(null);
-            fallbackSucceeded = true;
             if (ver && isNewerVersion(CURRENT_VERSION, ver)) {
+              setLatestVersion(ver);
+              setUpdateDownloadUrl("https://github.com/amar-fx/FML-Buddy/releases");
               setUpdateStatus("available");
               setShowUpdateCard(true);
-            } else {
-              setUpdateStatus("latest");
-              if (isManual) showToast(`FML Buddy is up to date (v${CURRENT_VERSION})`, "success");
             }
+            setUpdateError(null);
+            fallbackSucceeded = true;
           }
         } catch {
           // Fallback also failed
@@ -1762,7 +1755,24 @@ export const App: React.FC = () => {
    */
   const applyOtaUpdate = async () => {
     if (!updateDownloadUrl) {
-      showToast("Preview mode: In live releases, this installs over the air automatically.", "info");
+      setIsDownloadingUpdate(true);
+      setOtaStep("downloading");
+      setDownloadProgress(25);
+      setOtaMessage("Downloading update... 25%");
+      setTimeout(() => {
+        setDownloadProgress(65);
+        setOtaMessage("Downloading update... 65%");
+      }, 400);
+      setTimeout(() => {
+        setDownloadProgress(100);
+        setOtaStep("installing");
+        setOtaMessage("Installing update files in-place...");
+      }, 900);
+      setTimeout(() => {
+        setOtaStep("complete");
+        setIsDownloadingUpdate(false);
+        showToast("✓ [Preview Mode] Simulated update completed successfully!", "success");
+      }, 1600);
       return;
     }
 
@@ -2328,11 +2338,11 @@ export const App: React.FC = () => {
             <button
               type="button"
               className="btn-update-pill"
-              onClick={() => setShowUpdateCard((prev) => !prev)}
-              title={`Update v${latestVersion} Available! Click to toggle update card`}
+              onClick={() => setShowUpdateCard(true)}
+              title={`Update Available: v${latestVersion || "1.0.2"}! Click to view release notes`}
             >
               <span className="update-pulse-dot" />
-              <span className="update-pill-text">Update v{latestVersion}</span>
+              <span className="update-pill-text">Update v{latestVersion || "1.0.2"}</span>
               <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                 <polyline points="9 18 15 12 9 6"></polyline>
               </svg>
@@ -2379,106 +2389,150 @@ export const App: React.FC = () => {
         </div>
       </header>
 
-      {/* ================= COMPACT NATIVE UPDATE BANNER ================= */}
-      {showUpdateCard && updateStatus === "available" && (
-        <div className="fml-update-banner" role="alert" aria-live="polite">
-          <div className="banner-left">
-            <div className="banner-icon">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
-              </svg>
-            </div>
-
-            <div className="banner-text">
-              <div className="banner-title-line">
-                <span className="banner-title">Update available: v{latestVersion}</span>
-                <span className="banner-ver-diff">(v{CURRENT_VERSION} → v{latestVersion})</span>
+      {/* ================= NATIVE DESKTOP UPDATE DIALOG ================= */}
+      {showUpdateCard && (
+        <div
+          className="fml-modal-backdrop fml-update-backdrop"
+          onClick={() => setShowUpdateCard(false)}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="update-dialog-title"
+        >
+          <div
+            className="fml-update-dialog"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="update-dialog-header">
+              <div className="header-left">
+                <div className="update-dialog-title-row">
+                  <h3 id="update-dialog-title">Update Available</h3>
+                  <span className="version-tag">v{latestVersion || "1.0.2"}</span>
+                </div>
+                <p className="update-version-label">
+                  FML Buddy {latestVersion || "1.0.2"} is ready to install (current: v{CURRENT_VERSION}).
+                </p>
               </div>
-              <span className="banner-subtext">
-                {otaStep === "downloading"
-                  ? `Downloading update... ${downloadProgress ?? 0}%`
-                  : otaStep === "installing"
-                  ? "Installing in background..."
-                  : otaStep === "complete"
-                  ? `Installed! Close and reopen panel to complete.`
-                  : otaStep === "error"
-                  ? `Update failed: ${updateError}`
-                  : updateKeyChanges.length > 0
-                  ? updateKeyChanges.join(" · ")
-                  : "Click Update to install automatically."}
-              </span>
+
+              <button
+                type="button"
+                className="btn-dialog-close"
+                onClick={() => setShowUpdateCard(false)}
+                title="Close"
+                aria-label="Close"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Release Notes Body */}
+            <div className="update-dialog-body">
+              <div className="notes-heading">What's New in Version {latestVersion || "1.0.2"}</div>
+
+              <ul className="notes-list">
+                <li className="notes-item">
+                  <span className="notes-bullet">•</span>
+                  <div className="notes-text">
+                    <strong>Merged Columns &amp; Unified Workspace:</strong> Input and output are now combined into a single wide editor window, giving you maximum typing area and clean focus.
+                  </div>
+                </li>
+
+                <li className="notes-item">
+                  <span className="notes-bullet">•</span>
+                  <div className="notes-text">
+                    <strong>Updated Developer Details:</strong> Renamed developer identity to Amarshafan M, updated creator portfolio website (<a href="https://amarshafan.vercel.app/" target="_blank" rel="noreferrer" onClick={(e) => { e.preventDefault(); openExternalUrl("https://amarshafan.vercel.app/"); }}>amarshafan.vercel.app</a>), and refreshed social links.
+                  </div>
+                </li>
+
+                <li className="notes-item">
+                  <span className="notes-bullet">•</span>
+                  <div className="notes-text">
+                    <strong>Instant Clipboard Shortcuts:</strong> Press <kbd className="mini-kbd">{isMac ? "⌘↵" : "Ctrl+Enter"}</kbd> from anywhere in the panel to copy converted FML / ML-TT text straight to your clipboard.
+                  </div>
+                </li>
+
+                <li className="notes-item">
+                  <span className="notes-bullet">•</span>
+                  <div className="notes-text">
+                    <strong>Zero-Admin Background Updates:</strong> Updates now install directly into user storage without requiring Windows Administrator or macOS root privileges.
+                  </div>
+                </li>
+              </ul>
+
+              {/* Progress bar / Status during OTA */}
+              {(otaStep === "downloading" || otaStep === "installing" || otaStep === "complete" || otaStep === "error") && (
+                <div className={`update-status-panel ota-${otaStep}`}>
+                  <div className="status-row">
+                    <span className="status-label">
+                      {otaStep === "downloading" && `Downloading update... ${downloadProgress ?? 0}%`}
+                      {otaStep === "installing" && "Installing update in-place..."}
+                      {otaStep === "complete" && "✓ Update installed! Close and reopen panel to finish."}
+                      {otaStep === "error" && `Error: ${updateError || "Update failed"}`}
+                    </span>
+                    {otaStep === "downloading" && (
+                      <span className="status-pct">{downloadProgress ?? 0}%</span>
+                    )}
+                  </div>
+                  {(otaStep === "downloading" || otaStep === "installing") && (
+                    <div className="status-progress-track">
+                      <div
+                        className={`status-progress-bar ${otaStep === "installing" ? "is-indeterminate" : ""}`}
+                        style={{ width: otaStep === "installing" ? "100%" : `${downloadProgress ?? 0}%` }}
+                      />
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Footer */}
+            <div className="update-dialog-footer">
+              <button
+                type="button"
+                className="btn-dialog-secondary"
+                onClick={() => setShowUpdateCard(false)}
+              >
+                Later
+              </button>
+
+              {otaStep === "complete" ? (
+                <button
+                  type="button"
+                  className="btn-dialog-primary is-complete"
+                  onClick={() => {
+                    if (csi && typeof csi.closeExtension === "function") {
+                      csi.closeExtension();
+                    } else {
+                      setShowUpdateCard(false);
+                    }
+                  }}
+                >
+                  Close Panel
+                </button>
+              ) : otaStep === "error" ? (
+                <button
+                  type="button"
+                  className="btn-dialog-primary is-retry"
+                  onClick={applyOtaUpdate}
+                >
+                  Retry
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  className="btn-dialog-primary"
+                  onClick={applyOtaUpdate}
+                  disabled={isDownloadingUpdate || otaStep === "installing"}
+                >
+                  {isDownloadingUpdate || otaStep === "installing" ? (
+                    otaStep === "installing" ? "Installing..." : `Downloading ${downloadProgress ?? 0}%...`
+                  ) : (
+                    "Update Now"
+                  )}
+                </button>
+              )}
             </div>
           </div>
-
-          <div className="banner-actions">
-            {otaStep === "complete" ? (
-              <button
-                type="button"
-                className="btn-banner-action is-complete"
-                onClick={() => {
-                  if (csi && typeof csi.closeExtension === "function") {
-                    csi.closeExtension();
-                  } else {
-                    setShowUpdateCard(false);
-                  }
-                }}
-                title="Close panel to apply update"
-              >
-                <span>Close Panel</span>
-              </button>
-            ) : otaStep === "error" ? (
-              <button
-                type="button"
-                className="btn-banner-action is-error"
-                onClick={applyOtaUpdate}
-                title="Retry update"
-              >
-                <span>Retry</span>
-              </button>
-            ) : (
-              <button
-                type="button"
-                className="btn-banner-action"
-                onClick={applyOtaUpdate}
-                disabled={isDownloadingUpdate || otaStep === "installing"}
-                title="Update automatically in background"
-              >
-                {isDownloadingUpdate || otaStep === "installing" ? (
-                  <>
-                    <span className="btn-spinner-mini" />
-                    <span>{otaStep === "installing" ? "Installing..." : `${downloadProgress ?? 0}%`}</span>
-                  </>
-                ) : (
-                  <span>Update</span>
-                )}
-              </button>
-            )}
-
-            <button
-              type="button"
-              className="btn-banner-close"
-              onClick={() => setShowUpdateCard(false)}
-              title="Dismiss"
-              aria-label="Dismiss update banner"
-            >
-              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
-                <line x1="18" y1="6" x2="6" y2="18"></line>
-                <line x1="6" y1="6" x2="18" y2="18"></line>
-              </svg>
-            </button>
-          </div>
-
-          {/* Minimal bottom progress line during download */}
-          {(isDownloadingUpdate || otaStep === "installing") && (
-            <div className="banner-progress-bar">
-              <div
-                className={`banner-progress-fill ${otaStep === "installing" ? "is-indeterminate" : ""}`}
-                style={{ width: otaStep === "installing" ? "100%" : `${downloadProgress ?? 0}%` }}
-              />
-            </div>
-          )}
         </div>
       )}
 
