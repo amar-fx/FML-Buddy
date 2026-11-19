@@ -35,7 +35,7 @@ interface ActionResult {
   message: string;
 }
 
-const CURRENT_VERSION = "1.0.3";
+const CURRENT_VERSION = "1.0.4";
 const GITHUB_REPO_URL = "https://github.com/amar-fx/FML-Buddy";
 const GITHUB_FONTS_BASE_URL = "https://raw.githubusercontent.com/amar-fx/FML-Buddy/main/Assets/FML_Fonts";
 
@@ -1919,70 +1919,107 @@ export const App: React.FC = () => {
         setOtaMessage("Installing update over the air...");
         showToast("Installing update in-place...", "info");
 
-        // Helper to probe directory write permissions
-        const isDirWritable = (d: string): boolean => {
-          try {
-            if (!fs.existsSync(d)) {
-              fs.mkdirSync(d, { recursive: true });
-            }
-            const probe = path.join(d, `.ota_probe_${Date.now()}`);
-            fs.writeFileSync(probe, "ok");
-            fs.unlinkSync(probe);
-            return true;
-          } catch {
-            return false;
-          }
-        };
-
-        // User-level writable extension directory (always safe without Windows/macOS Admin privileges)
-        const userExtBase = platform === "darwin"
-          ? path.join(os.homedir(), "Library", "Application Support", "Adobe", "CEP", "extensions")
-          : path.join(nodeProcess?.env?.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Adobe", "CEP", "extensions");
-
-        let currentExtDir = "";
+        // The exact directory Premiere Pro is running the extension from (never redirect away)
+        let extDir = "";
         if (csi && typeof csi.getSystemPath === "function") {
-          try { currentExtDir = csi.getSystemPath("extension"); } catch (e) {}
+          try { extDir = csi.getSystemPath("extension"); } catch (e) {}
         }
-        if (!currentExtDir && window.__adobe_cep__ && typeof window.__adobe_cep__.getSystemPath === "function") {
-          try { currentExtDir = window.__adobe_cep__.getSystemPath("extension"); } catch (e) {}
+        if (!extDir && window.__adobe_cep__ && typeof window.__adobe_cep__.getSystemPath === "function") {
+          try { extDir = window.__adobe_cep__.getSystemPath("extension"); } catch (e) {}
         }
-
-        if (currentExtDir && fs.existsSync(currentExtDir)) {
+        if (extDir && fs.existsSync(extDir)) {
           try {
-            const real = fs.realpathSync(currentExtDir);
-            if (real) currentExtDir = real;
+            const real = fs.realpathSync(extDir);
+            if (real) extDir = real;
           } catch (e) {}
         }
 
-        // Determine destination folder name
-        const folderName = currentExtDir ? path.basename(currentExtDir) : "com.fmlbuddy.com";
-        const userTargetDir = path.join(userExtBase, folderName);
-
-        // Check if current directory is inside a system-protected location (e.g. Program Files or /Library)
-        const isSystemDir = Boolean(
-          currentExtDir && (
-            (platform === "win32" && (
-              currentExtDir.toLowerCase().includes("program files") ||
-              currentExtDir.toLowerCase().includes("common files")
-            )) ||
-            (platform === "darwin" && currentExtDir.startsWith("/Library"))
-          )
-        );
-
-        // If current folder is system-protected or read-only, switch to user-level extension directory
-        let extDir = currentExtDir;
-        if (!extDir || isSystemDir || !isDirWritable(extDir)) {
-          console.warn(`[FML Buddy OTA] Current dir is system-protected (${currentExtDir}). Extracting to user directory: ${userTargetDir}`);
-          extDir = userTargetDir;
-          if (!fs.existsSync(extDir)) {
-            fs.mkdirSync(extDir, { recursive: true });
-          }
+        if (!extDir) {
+          const userExtBase = platform === "darwin"
+            ? path.join(os.homedir(), "Library", "Application Support", "Adobe", "CEP", "extensions")
+            : path.join(nodeProcess?.env?.APPDATA || path.join(os.homedir(), "AppData", "Roaming"), "Adobe", "CEP", "extensions");
+          extDir = path.join(userExtBase, "com.fmlbuddy.com");
         }
 
-        // 3. Extract the ZXP archive directly over the extension directory
+        // Try requiring adm-zip from CEP node_modules or global require
+        let AdmZipClass: any = null;
+        try {
+          const cepRequire = window.cep_node?.require || (window as any).require;
+          if (cepRequire) {
+            AdmZipClass = cepRequire("adm-zip");
+          }
+        } catch (e) {
+          console.warn("[FML Buddy OTA] Could not require adm-zip:", e);
+        }
+
+        // 3. Extract the update archive over extDir (Brand Base method)
         await new Promise<void>((resolve, reject) => {
+          if (AdmZipClass) {
+            try {
+              const zip = new AdmZipClass(tempZxpPath);
+              try {
+                // Direct extraction attempt:
+                zip.extractAllTo(extDir, true);
+                try { if (fs.existsSync(tempZxpPath)) fs.unlinkSync(tempZxpPath); } catch (e) {}
+                resolve();
+                return;
+              } catch (permErr: any) {
+                // If permission error on Windows (e.g. Program Files)
+                if (platform === "win32" && (
+                  permErr?.code === "EPERM" ||
+                  permErr?.message?.includes("EPERM") ||
+                  (permErr?.code === "ENOENT" && permErr?.message?.includes("chmod"))
+                )) {
+                  setOtaMessage("Requesting Windows Administrator permission...");
+                  const tempExtractDir = path.join(os.tmpdir(), `fmlbuddy-update-ext-${Date.now()}`);
+                  fs.mkdirSync(tempExtractDir, { recursive: true });
+                  zip.extractAllTo(tempExtractDir, true);
+
+                  const batPath = path.join(os.tmpdir(), `fmlbuddy-update-${Date.now()}.bat`);
+                  fs.writeFileSync(batPath, `@echo off\nxcopy /E /Y /C /Q "${tempExtractDir}\\*" "${extDir}\\"`);
+
+                  const psCmd = `Start-Process cmd -ArgumentList '/c ""${batPath}""' -Verb RunAs -Wait`;
+                  cp.exec(`powershell.exe -NoProfile -Command "${psCmd}"`, (uacErr: any) => {
+                    try { if (fs.existsSync(tempZxpPath)) fs.unlinkSync(tempZxpPath); } catch (e) {}
+                    try { if (fs.existsSync(batPath)) fs.unlinkSync(batPath); } catch (e) {}
+                    try { fs.rmSync(tempExtractDir, { recursive: true, force: true }); } catch (e) {}
+
+                    if (uacErr) {
+                      reject(new Error("Update cancelled or failed during Windows administrator prompt."));
+                    } else {
+                      resolve();
+                    }
+                  });
+                  return;
+                } else if (platform === "darwin" && (permErr?.code === "EACCES" || permErr?.message?.includes("EACCES"))) {
+                  setOtaMessage("Requesting Mac Administrator permission...");
+                  const tempExtractDir = path.join(os.tmpdir(), `fmlbuddy-update-ext-${Date.now()}`);
+                  fs.mkdirSync(tempExtractDir, { recursive: true });
+                  zip.extractAllTo(tempExtractDir, true);
+
+                  const script = `osascript -e 'do shell script "cp -R \\"${tempExtractDir}/\\"* \\"${extDir}/\\"" with administrator privileges'`;
+                  cp.exec(script, (macErr: any) => {
+                    try { if (fs.existsSync(tempZxpPath)) fs.unlinkSync(tempZxpPath); } catch (e) {}
+                    try { fs.rmSync(tempExtractDir, { recursive: true, force: true }); } catch (e) {}
+
+                    if (macErr) {
+                      reject(new Error("Update cancelled or failed during Mac administrator prompt."));
+                    } else {
+                      resolve();
+                    }
+                  });
+                  return;
+                } else {
+                  throw permErr;
+                }
+              }
+            } catch (admErr: any) {
+              console.warn("[FML Buddy OTA] AdmZip extraction failed, trying native tools fallback:", admErr);
+            }
+          }
+
+          // Fallback if AdmZip is missing or failed:
           if (platform === "darwin") {
-            // macOS: try unzip, fallback to tar
             cp.execFile("unzip", ["-o", "-q", tempZxpPath, "-d", extDir], (unzipErr: any) => {
               if (!unzipErr) return resolve();
               cp.execFile("tar", ["-xf", tempZxpPath, "-C", extDir], (tarErr: any) => {
@@ -1991,49 +2028,63 @@ export const App: React.FC = () => {
               });
             });
           } else {
-            // Windows: native tar.exe first, fallback to PowerShell Expand-Archive, then elevated UAC if needed
             const winTar = path.join(nodeProcess?.env?.WINDIR || "C:\\Windows", "System32", "tar.exe");
             const tarBinary = fs.existsSync(winTar) ? winTar : "tar.exe";
-
-            if (!fs.existsSync(extDir)) {
-              fs.mkdirSync(extDir, { recursive: true });
-            }
 
             cp.execFile(tarBinary, ["-xf", tempZxpPath, "-C", extDir], (tarErr: any) => {
               if (!tarErr) return resolve();
 
-              // Fallback 1: PowerShell Expand-Archive
-              const psCmd = `Expand-Archive -LiteralPath '${tempZxpPath.replace(/'/g, "''")}' -DestinationPath '${extDir.replace(/'/g, "''")}' -Force`;
-              cp.execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", psCmd], (psErr: any) => {
-                if (!psErr) return resolve();
+              const tempExtractDir = path.join(os.tmpdir(), `fmlbuddy-update-ext-${Date.now()}`);
+              fs.mkdirSync(tempExtractDir, { recursive: true });
 
-                // Fallback 2: If permission denied and target was a system dir, try elevated UAC PowerShell
-                if (currentExtDir && (tarErr?.message?.includes("Permission denied") || psErr?.message?.includes("Permission denied"))) {
-                  const elevateCmd = `Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile -ExecutionPolicy Bypass -Command Expand-Archive -LiteralPath \"${tempZxpPath.replace(/'/g, "''")}\" -DestinationPath \"${currentExtDir.replace(/'/g, "''")}\" -Force'`;
-                  cp.execFile("powershell.exe", ["-NoProfile", "-ExecutionPolicy", "Bypass", "-Command", elevateCmd], (uacErr: any) => {
-                    if (!uacErr) return resolve();
-                    reject(new Error(`Extraction failed: Administrator permission required. Run Premiere Pro as Administrator or install to %APPDATA%.`));
+              cp.execFile(tarBinary, ["-xf", tempZxpPath, "-C", tempExtractDir], (extractErr: any) => {
+                if (!extractErr) {
+                  const batPath = path.join(os.tmpdir(), `fmlbuddy-update-${Date.now()}.bat`);
+                  fs.writeFileSync(batPath, `@echo off\nxcopy /E /Y /C /Q "${tempExtractDir}\\*" "${extDir}\\"`);
+
+                  const psCmd = `Start-Process cmd -ArgumentList '/c ""${batPath}""' -Verb RunAs -Wait`;
+                  cp.exec(`powershell.exe -NoProfile -Command "${psCmd}"`, (uacErr: any) => {
+                    try { if (fs.existsSync(batPath)) fs.unlinkSync(batPath); } catch (e) {}
+                    try { fs.rmSync(tempExtractDir, { recursive: true, force: true }); } catch (e) {}
+                    if (uacErr) {
+                      reject(new Error("Update cancelled or failed during Windows administrator prompt."));
+                    } else {
+                      resolve();
+                    }
                   });
                   return;
                 }
-
-                reject(new Error(`Extraction failed: ${tarErr.message || psErr.message}`));
+                reject(new Error(`Extraction failed: ${tarErr.message || extractErr.message}`));
               });
             });
           }
         });
 
-        // 4. Cleanup temporary file
+        // 4. Cleanup temporary file & clean any orphaned duplicate in %APPDATA%
         try {
           if (fs.existsSync(tempZxpPath)) fs.unlinkSync(tempZxpPath);
         } catch {}
 
-        // 5. Success! Mark complete
+        if (platform === "win32") {
+          try {
+            const appData = nodeProcess?.env?.APPDATA || path.join(os.homedir(), "AppData", "Roaming");
+            const dupDir = path.join(appData, "Adobe", "CEP", "extensions", path.basename(extDir));
+            if (extDir.toLowerCase() !== dupDir.toLowerCase() && fs.existsSync(dupDir)) {
+              fs.rmSync(dupDir, { recursive: true, force: true });
+            }
+          } catch (e) {}
+        }
+
+        // 5. Success! Mark complete & reload automatically (Brand Base style)
         setOtaStep("complete");
-        setOtaMessage(`✓ Updated to v${latestVersion}! Restart panel to apply.`);
+        setOtaMessage(`✓ Updated to v${latestVersion}! Reloading panel...`);
         setDownloadComplete(true);
         setIsDownloadingUpdate(false);
-        showToast(`🎉 FML Buddy v${latestVersion} installed! Please close and reopen the panel to complete.`, "success");
+        showToast(`🎉 FML Buddy v${latestVersion} installed! Reloading panel...`, "success");
+
+        setTimeout(() => {
+          window.location.reload();
+        }, 1500);
 
         return;
       } catch (err: any) {
@@ -2527,7 +2578,7 @@ export const App: React.FC = () => {
                       <span className="status-label">
                         {otaStep === "downloading" && `Downloading update... ${downloadProgress ?? 0}%`}
                         {otaStep === "installing" && "Installing update in-place..."}
-                        {otaStep === "complete" && "✓ Update installed! Close and reopen panel to finish."}
+                        {otaStep === "complete" && "✓ Update installed! Reloading panel automatically..."}
                         {otaStep === "error" && `Error: ${updateError || "Update failed"}`}
                       </span>
                       {otaStep === "downloading" && (
@@ -2562,6 +2613,7 @@ export const App: React.FC = () => {
                     type="button"
                     className="btn-dialog-secondary"
                     onClick={() => setShowUpdateCard(false)}
+                    disabled={otaStep === "complete"}
                   >
                     Later
                   </button>
@@ -2571,14 +2623,10 @@ export const App: React.FC = () => {
                       type="button"
                       className="btn-dialog-primary is-complete"
                       onClick={() => {
-                        if (csi && typeof csi.closeExtension === "function") {
-                          csi.closeExtension();
-                        } else {
-                          setShowUpdateCard(false);
-                        }
+                        window.location.reload();
                       }}
                     >
-                      Close Panel
+                      Reloading...
                     </button>
                   ) : otaStep === "error" ? (
                     <button
